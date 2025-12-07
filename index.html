@@ -29,11 +29,11 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect } from 'https://esm.sh/react@18.2.0';
+        import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18.2.0';
         import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
         import { 
             Moon, Sun, Download, Upload, Trash2, ExternalLink, 
-            Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home 
+            Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, FileUp 
         } from 'https://esm.sh/lucide-react@0.294.0';
 
         // --- CONSTANTS ---
@@ -41,17 +41,27 @@
         const COST_WIFI = 625;
         const COST_ADMIN = 1500;
 
-        // Your original backup data to serve as default if empty
+        // --- COMPLETE BACKUP DATA (12 Items) ---
         const INITIAL_BACKUP_DATA = [
             {"id":1764893587189,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/a2-the-purple-tree/1015-stanza-bopape-street/RR3981661","area":"Hatfield","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":true,"closeToUp":true,"effectiveRent":5790,"addedAt":"2025-12-05T00:13:07.189Z"},
             {"id":1764893711674,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/b1-the-purple-tree/1015-stanza-bopape-street/RR3981667","area":"Hatfield","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":false,"closeToUp":true,"effectiveRent":6290,"addedAt":"2025-12-05T00:15:11.674Z"},
-            {"id":1764894012619,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/210-amos-street/RR2496470","area":"Hatfield","type":"Garden Cottage","rent":5000,"deposit":5000,"elecIncluded":true,"wifiIncluded":true,"adminFee":false,"closeToUp":true,"effectiveRent":5000,"moveInCost":10000,"addedAt":"2025-12-05T00:20:12.619Z"}
+            {"id":1764894012619,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/210-amos-street/RR2496470","area":"Hatfield","type":"Garden Cottage","rent":5000,"deposit":5000,"elecIncluded":true,"wifiIncluded":true,"adminFee":false,"closeToUp":true,"effectiveRent":5000,"moveInCost":10000,"addedAt":"2025-12-05T00:20:12.619Z"},
+            {"id":1764895066049,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/113578114","area":"Hillcrest","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":false,"closeToUp":true,"effectiveRent":6290,"addedAt":"2025-12-05T00:37:46.049Z"},
+            {"id":1764895553622,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/116702413","area":"Hillcrest","type":"Bachelor","rent":4900,"deposit":4900,"elecIncluded":false,"closeToUp":true,"effectiveRent":5400,"addedAt":"2025-12-05T00:45:53.622Z"},
+            {"id":1764896875653,"link":"https://www.property24.com/to-rent/sunnyside/pretoria/gauteng/41/116709959","area":"Sunnyside","type":"Bachelor","rent":4000,"deposit":4000,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5125,"moveInCost":9500,"addedAt":"2025-12-05T01:07:55.653Z"},
+            {"id":1764897160444,"link":"https://www.property24.com/to-rent/sunnyside/pretoria/gauteng/41/116687648","area":"Sunnyside","type":"Bachelor","rent":3950,"deposit":3950,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5075,"moveInCost":9400,"addedAt":"2025-12-05T01:12:40.444Z"},
+            {"id":1764897247355,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116688026","area":"Arcadia","type":"Bachelor","rent":4410,"deposit":4410,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5535,"moveInCost":10320,"addedAt":"2025-12-05T01:14:07.355Z"},
+            {"id":1764897382866,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116688094","area":"Arcadia","type":"1 Bedroom","rent":4882,"deposit":4882,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":6007,"moveInCost":11264,"addedAt":"2025-12-05T01:16:22.866Z"},
+            {"id":1764897462091,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/116689952","area":"Hatfield","type":"Bachelor","rent":5300,"deposit":5300,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":true,"effectiveRent":6425,"moveInCost":12100,"addedAt":"2025-12-05T01:17:42.091Z"},
+            {"id":1764897552550,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116693688","area":"Arcadia","type":"1 Bedroom","rent":5700,"deposit":5700,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":6825,"moveInCost":12900,"addedAt":"2025-12-05T01:19:12.550Z"},
+            {"id":1764897631660,"link":"https://www.property24.com/to-rent/hillcrest/pretoria/gauteng/305/110437916","area":"Hillcrest","type":"Bachelor","rent":5850,"deposit":5850,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":true,"effectiveRent":6975,"moveInCost":13200,"addedAt":"2025-12-05T01:20:31.660Z"}
         ];
 
         function App() {
             // --- STATE ---
             const [listings, setListings] = useState([]);
             const [darkMode, setDarkMode] = useState(false);
+            const fileInputRef = useRef(null);
             
             // Form State
             const [editId, setEditId] = useState(null);
@@ -78,9 +88,6 @@
                 const savedData = localStorage.getItem('pta_rentals_data');
                 if (savedData) {
                     setListings(JSON.parse(savedData));
-                } else {
-                    // Optional: Load initial backup if completely empty
-                    // setListings(INITIAL_BACKUP_DATA);
                 }
             }, []);
 
@@ -168,13 +175,47 @@
                 if (editId === id) resetForm();
             };
 
-            const handleLoadBackup = () => {
-                if (!window.confirm("Load backup data? This adds to your current list.")) return;
-                // Combine current listings with backup, avoiding duplicates by ID
+            const handleLoadDefaultBackup = () => {
+                if (!window.confirm("Load built-in backup data? This adds to your current list.")) return;
                 const currentIds = new Set(listings.map(l => l.id));
                 const newItems = INITIAL_BACKUP_DATA.filter(l => !currentIds.has(l.id));
                 setListings(prev => [...prev, ...newItems]);
-                alert(`Added ${newItems.length} items from backup.`);
+                alert(`Added ${newItems.length} items from built-in backup.`);
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const uploadedData = JSON.parse(event.target.result);
+                        if (Array.isArray(uploadedData)) {
+                            if (!window.confirm(`Found ${uploadedData.length} items in file. Import them?`)) return;
+                            const currentIds = new Set(listings.map(l => l.id));
+                            const newItems = uploadedData.filter(l => !currentIds.has(l.id));
+                            setListings(prev => [...prev, ...newItems]);
+                            alert(`Imported ${newItems.length} new items.`);
+                        } else {
+                            alert("Invalid file format. Expected a JSON array.");
+                        }
+                    } catch (err) {
+                        alert("Error parsing JSON file.");
+                    }
+                };
+                reader.readAsText(file);
+                // Reset file input
+                e.target.value = null;
+            };
+
+            const handleExport = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(listings));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", "rental_backup.json");
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
             };
 
             // --- FILTER & SORT ---
@@ -217,8 +258,18 @@
                                     <button onClick={() => setDarkMode(!darkMode)} className="text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-lg transition mr-2">
                                         {darkMode ? <Sun size={20} /> : <Moon size={20} />}
                                     </button>
-                                    <button onClick={handleLoadBackup} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5">
-                                        <Download size={16} /> Load Backup
+                                    
+                                    <button onClick={handleLoadDefaultBackup} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Load built-in backup">
+                                        <RefreshCw size={16} /> <span className="hidden sm:inline">Reset</span>
+                                    </button>
+
+                                    <button onClick={() => fileInputRef.current.click()} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Upload JSON file">
+                                        <Upload size={16} /> <span className="hidden sm:inline">Import</span>
+                                    </button>
+                                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".json" className="hidden" />
+
+                                    <button onClick={handleExport} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Download backup">
+                                        <Download size={16} /> <span className="hidden sm:inline">Export</span>
                                     </button>
                                 </div>
                             </div>
