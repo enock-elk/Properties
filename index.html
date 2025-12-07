@@ -3,27 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rental Manager</title>
-    <!-- Tailwind CSS -->
+    <title>Rental Manager (Shared + Backup)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
-                extend: {
-                    fontFamily: { sans: ['Inter', 'sans-serif'] },
-                }
+                extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } }
             }
         }
     </script>
-    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-    </style>
+    <style> body { font-family: 'Inter', sans-serif; } </style>
 </head>
 <body class="bg-gray-50 text-slate-800 transition-colors duration-300">
     <div id="root"></div>
@@ -33,65 +25,70 @@
         import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
         import { 
             Moon, Sun, Download, Upload, Trash2, ExternalLink, 
-            Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, FileUp 
+            Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, Wifi, Cloud
         } from 'https://esm.sh/lucide-react@0.294.0';
+        
+        // Import Firebase SDKs
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // --- CONSTANTS ---
+        // ------------------------------------------------------------------
+        // FIREBASE CONFIGURATION
+        // ------------------------------------------------------------------
+        const firebaseConfig = {
+            apiKey: "AIzaSyCoP9KbK3fo6U5O0TV6CP8rAwfNjndlPUY",
+            authDomain: "my-rent-data.firebaseapp.com",
+            projectId: "my-rent-data",
+            storageBucket: "my-rent-data.appspot.com",
+            messagingSenderId: "841323250976",
+            appId: "1:841323250976:web:7d9f828ed79ac528ddc345"
+        };
+        // ------------------------------------------------------------------
+
+        // Initialize Firebase
+        let db;
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            console.log("Firebase initialized successfully");
+        } catch (error) {
+            console.error("Firebase init failed:", error);
+        }
+
         const COST_ELEC = 500;
         const COST_WIFI = 625;
         const COST_ADMIN = 1500;
 
-        // --- COMPLETE BACKUP DATA (12 Items) ---
+        // Fallback data
         const INITIAL_BACKUP_DATA = [
-            {"id":1764893587189,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/a2-the-purple-tree/1015-stanza-bopape-street/RR3981661","area":"Hatfield","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":true,"closeToUp":true,"effectiveRent":5790,"addedAt":"2025-12-05T00:13:07.189Z"},
-            {"id":1764893711674,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/b1-the-purple-tree/1015-stanza-bopape-street/RR3981667","area":"Hatfield","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":false,"closeToUp":true,"effectiveRent":6290,"addedAt":"2025-12-05T00:15:11.674Z"},
-            {"id":1764894012619,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/210-amos-street/RR2496470","area":"Hatfield","type":"Garden Cottage","rent":5000,"deposit":5000,"elecIncluded":true,"wifiIncluded":true,"adminFee":false,"closeToUp":true,"effectiveRent":5000,"moveInCost":10000,"addedAt":"2025-12-05T00:20:12.619Z"},
-            {"id":1764895066049,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/113578114","area":"Hillcrest","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":false,"closeToUp":true,"effectiveRent":6290,"addedAt":"2025-12-05T00:37:46.049Z"},
-            {"id":1764895553622,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/116702413","area":"Hillcrest","type":"Bachelor","rent":4900,"deposit":4900,"elecIncluded":false,"closeToUp":true,"effectiveRent":5400,"addedAt":"2025-12-05T00:45:53.622Z"},
-            {"id":1764896875653,"link":"https://www.property24.com/to-rent/sunnyside/pretoria/gauteng/41/116709959","area":"Sunnyside","type":"Bachelor","rent":4000,"deposit":4000,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5125,"moveInCost":9500,"addedAt":"2025-12-05T01:07:55.653Z"},
-            {"id":1764897160444,"link":"https://www.property24.com/to-rent/sunnyside/pretoria/gauteng/41/116687648","area":"Sunnyside","type":"Bachelor","rent":3950,"deposit":3950,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5075,"moveInCost":9400,"addedAt":"2025-12-05T01:12:40.444Z"},
-            {"id":1764897247355,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116688026","area":"Arcadia","type":"Bachelor","rent":4410,"deposit":4410,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5535,"moveInCost":10320,"addedAt":"2025-12-05T01:14:07.355Z"},
-            {"id":1764897382866,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116688094","area":"Arcadia","type":"1 Bedroom","rent":4882,"deposit":4882,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":6007,"moveInCost":11264,"addedAt":"2025-12-05T01:16:22.866Z"},
-            {"id":1764897462091,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/116689952","area":"Hatfield","type":"Bachelor","rent":5300,"deposit":5300,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":true,"effectiveRent":6425,"moveInCost":12100,"addedAt":"2025-12-05T01:17:42.091Z"},
-            {"id":1764897552550,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116693688","area":"Arcadia","type":"1 Bedroom","rent":5700,"deposit":5700,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":6825,"moveInCost":12900,"addedAt":"2025-12-05T01:19:12.550Z"},
-            {"id":1764897631660,"link":"https://www.property24.com/to-rent/hillcrest/pretoria/gauteng/305/110437916","area":"Hillcrest","type":"Bachelor","rent":5850,"deposit":5850,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":true,"effectiveRent":6975,"moveInCost":13200,"addedAt":"2025-12-05T01:20:31.660Z"}
+            {"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/a2-the-purple-tree/1015-stanza-bopape-street/RR3981661","area":"Hatfield","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":true,"closeToUp":true,"addedAt":"2025-12-05T00:13:07.189Z"},
+            {"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/210-amos-street/RR2496470","area":"Hatfield","type":"Garden Cottage","rent":5000,"deposit":5000,"elecIncluded":true,"wifiIncluded":true,"adminFee":false,"closeToUp":true,"addedAt":"2025-12-05T00:20:12.619Z"}
         ];
 
         function App() {
-            // --- STATE ---
             const [listings, setListings] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
             const [darkMode, setDarkMode] = useState(false);
+            const [editId, setEditId] = useState(null);
             const fileInputRef = useRef(null);
             
-            // Form State
-            const [editId, setEditId] = useState(null);
+            const [filterArea, setFilterArea] = useState('all');
+            const [filterType, setFilterType] = useState('all');
+            const [sortOrder, setSortOrder] = useState('dateNew');
+
             const [formData, setFormData] = useState({
                 link: '', area: 'Hatfield', type: 'Bachelor', rent: '', deposit: '',
                 notes: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
             });
 
-            // Filter State
-            const [filterArea, setFilterArea] = useState('all');
-            const [filterType, setFilterType] = useState('all');
-            const [sortOrder, setSortOrder] = useState('dateNew');
-
-            const areas = ["Hatfield", "Muckleneuk", "Brooklyn", "Arcadia", "Sunnyside", "Menlo Park", "Queenswood", "Colbyn", "Hillcrest"];
-
-            // --- INITIALIZATION (LocalStorage) ---
+            // --- THEME ---
             useEffect(() => {
-                // Check theme preference
                 if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                     setDarkMode(true);
                 }
-
-                // Load Data
-                const savedData = localStorage.getItem('pta_rentals_data');
-                if (savedData) {
-                    setListings(JSON.parse(savedData));
-                }
             }, []);
 
-            // Theme Toggle Effect
             useEffect(() => {
                 if (darkMode) {
                     document.documentElement.classList.add('dark');
@@ -102,52 +99,142 @@
                 }
             }, [darkMode]);
 
-            // Save Data Effect
+            // --- REAL-TIME DATA SYNC ---
             useEffect(() => {
-                localStorage.setItem('pta_rentals_data', JSON.stringify(listings));
-            }, [listings]);
-
-            // --- LOGIC ---
-            const handleInputChange = (e) => {
-                const { id, value, type, checked } = e.target;
-                setFormData(prev => ({
-                    ...prev,
-                    [id]: type === 'checkbox' ? checked : value
-                }));
-                if (id === 'rent' && formData.deposit === '') {
-                    setFormData(prev => ({ ...prev, deposit: value }));
+                if (!db) {
+                    setError("Database connection failed.");
+                    setLoading(false);
+                    return;
                 }
+
+                const q = query(collection(db, "rentals"));
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data(),
+                        effectiveRent: Number(doc.data().rent) + (doc.data().elecIncluded ? 0 : COST_ELEC) + (doc.data().wifiIncluded ? 0 : COST_WIFI),
+                        moveInCost: Number(doc.data().rent) + Number(doc.data().deposit) + (doc.data().adminFee ? COST_ADMIN : 0)
+                    }));
+                    setListings(data);
+                    setLoading(false);
+                }, (err) => {
+                    console.error("Sync Error:", err);
+                    if (err.code === 'permission-denied') {
+                        setError("Permission Denied: Please set Firestore Rules to 'allow read, write: if true;' in Firebase Console.");
+                    } else {
+                        setError("Connection Error: " + err.message);
+                    }
+                    setLoading(false);
+                });
+
+                return () => unsubscribe();
+            }, []);
+
+            // --- IMPORT / EXPORT LOGIC ---
+            
+            const handleExport = () => {
+                // Remove internal ID field from export to avoid confusion
+                const cleanData = listings.map(({ id, effectiveRent, moveInCost, ...item }) => item);
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cleanData));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", "rental_db_backup.json");
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
             };
 
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                const rawRent = Number(formData.rent);
-                const rawDeposit = Number(formData.deposit);
-                
-                const effectiveRent = rawRent + 
-                    (formData.elecIncluded ? 0 : COST_ELEC) + 
-                    (formData.wifiIncluded ? 0 : COST_WIFI);
-                    
-                const moveInCost = rawRent + rawDeposit + 
-                    (formData.adminFee ? COST_ADMIN : 0);
+            const handleFileUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const uploadedData = JSON.parse(event.target.result);
+                        if (!Array.isArray(uploadedData)) {
+                            return alert("Invalid file format. Expected a JSON array.");
+                        }
 
+                        // Filter out items that are already in the DB (matching by Link)
+                        const existingLinks = new Set(listings.map(l => l.link));
+                        const newItems = uploadedData.filter(l => l.link && !existingLinks.has(l.link));
+
+                        if (newItems.length === 0) {
+                            return alert("No new unique items found in file. All items already exist in database.");
+                        }
+
+                        if (!window.confirm(`Found ${newItems.length} new items. Upload them to the shared database?`)) return;
+
+                        setLoading(true);
+                        // Batch write to Firestore (limit 500 per batch)
+                        const batch = writeBatch(db);
+                        let count = 0;
+                        
+                        newItems.forEach(item => {
+                            if (count >= 400) return; // Simple safety limit for single batch
+                            
+                            // Remove ID if present in JSON, let Firestore generate new ID
+                            const { id, effectiveRent, moveInCost, ...itemData } = item;
+                            
+                            const ref = doc(collection(db, "rentals"));
+                            batch.set(ref, {
+                                ...itemData,
+                                addedAt: itemData.addedAt || new Date().toISOString()
+                            });
+                            count++;
+                        });
+
+                        await batch.commit();
+                        alert(`Successfully uploaded ${count} items!`);
+                        setLoading(false);
+
+                    } catch (err) {
+                        alert("Error importing: " + err.message);
+                        setLoading(false);
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = null; // Reset input
+            };
+
+            // --- CRUD OPERATIONS ---
+            const handleInputChange = (e) => {
+                const { id, value, type, checked } = e.target;
+                setFormData(prev => ({ ...prev, [id]: type === 'checkbox' ? checked : value }));
+                if (id === 'rent' && formData.deposit === '') setFormData(prev => ({ ...prev, deposit: value }));
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
                 const payload = {
                     ...formData,
-                    id: editId || Date.now(),
-                    rent: rawRent,
-                    deposit: rawDeposit,
-                    effectiveRent,
-                    moveInCost,
+                    rent: Number(formData.rent),
+                    deposit: Number(formData.deposit),
                     addedAt: editId ? (listings.find(l => l.id === editId)?.addedAt) : new Date().toISOString()
                 };
 
-                if (editId) {
-                    setListings(prev => prev.map(item => item.id === editId ? payload : item));
-                    setEditId(null);
-                } else {
-                    setListings(prev => [...prev, payload]);
+                try {
+                    if (editId) {
+                        await updateDoc(doc(db, "rentals", editId), payload);
+                        setEditId(null);
+                    } else {
+                        await addDoc(collection(db, "rentals"), payload);
+                    }
+                    resetForm();
+                } catch (err) {
+                    alert("Error saving: " + err.message);
                 }
-                resetForm();
+            };
+
+            const handleDelete = async (id) => {
+                if (!window.confirm("Delete this listing for everyone?")) return;
+                try {
+                    await deleteDoc(doc(db, "rentals", id));
+                    if (editId === id) resetForm();
+                } catch (err) {
+                    alert("Error deleting: " + err.message);
+                }
             };
 
             const resetForm = () => {
@@ -169,64 +256,24 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
-            const handleDelete = (id) => {
-                if (!window.confirm("Delete this listing?")) return;
-                setListings(prev => prev.filter(l => l.id !== id));
-                if (editId === id) resetForm();
+            const handleInitializeDB = async () => {
+                if (!window.confirm("This will upload default data to the shared database. Continue?")) return;
+                const batch = writeBatch(db);
+                INITIAL_BACKUP_DATA.forEach(item => {
+                    const ref = doc(collection(db, "rentals"));
+                    batch.set(ref, item);
+                });
+                await batch.commit();
             };
 
-            const handleLoadDefaultBackup = () => {
-                if (!window.confirm("Load built-in backup data? This adds to your current list.")) return;
-                const currentIds = new Set(listings.map(l => l.id));
-                const newItems = INITIAL_BACKUP_DATA.filter(l => !currentIds.has(l.id));
-                setListings(prev => [...prev, ...newItems]);
-                alert(`Added ${newItems.length} items from built-in backup.`);
-            };
-
-            const handleFileUpload = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const uploadedData = JSON.parse(event.target.result);
-                        if (Array.isArray(uploadedData)) {
-                            if (!window.confirm(`Found ${uploadedData.length} items in file. Import them?`)) return;
-                            const currentIds = new Set(listings.map(l => l.id));
-                            const newItems = uploadedData.filter(l => !currentIds.has(l.id));
-                            setListings(prev => [...prev, ...newItems]);
-                            alert(`Imported ${newItems.length} new items.`);
-                        } else {
-                            alert("Invalid file format. Expected a JSON array.");
-                        }
-                    } catch (err) {
-                        alert("Error parsing JSON file.");
-                    }
-                };
-                reader.readAsText(file);
-                // Reset file input
-                e.target.value = null;
-            };
-
-            const handleExport = () => {
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(listings));
-                const downloadAnchorNode = document.createElement('a');
-                downloadAnchorNode.setAttribute("href", dataStr);
-                downloadAnchorNode.setAttribute("download", "rental_backup.json");
-                document.body.appendChild(downloadAnchorNode);
-                downloadAnchorNode.click();
-                downloadAnchorNode.remove();
-            };
-
-            // --- FILTER & SORT ---
             const processedListings = listings
                 .filter(l => (filterArea === 'all' || l.area === filterArea))
                 .filter(l => (filterType === 'all' || l.type === filterType))
                 .sort((a, b) => {
                     if (sortOrder === 'dateNew') return new Date(b.addedAt || 0) - new Date(a.addedAt || 0);
-                    if (sortOrder === 'priceAsc') return (a.effectiveRent || 0) - (b.effectiveRent || 0);
-                    if (sortOrder === 'priceDesc') return (b.effectiveRent || 0) - (a.effectiveRent || 0);
-                    if (sortOrder === 'moveInAsc') return (a.moveInCost || 0) - (b.moveInCost || 0);
+                    if (sortOrder === 'priceAsc') return a.effectiveRent - b.effectiveRent;
+                    if (sortOrder === 'priceDesc') return b.effectiveRent - a.effectiveRent;
+                    if (sortOrder === 'moveInAsc') return a.moveInCost - b.moveInCost;
                     return 0;
                 });
 
@@ -236,6 +283,8 @@
                 return { label: 'Risk', icon: <XCircle size={12} />, color: 'text-red-700 bg-red-100 border-red-200' };
             };
 
+            const areas = ["Hatfield", "Muckleneuk", "Brooklyn", "Arcadia", "Sunnyside", "Menlo Park", "Queenswood", "Colbyn", "Hillcrest"];
+
             return (
                 <div className={`min-h-screen font-sans ${darkMode ? 'dark bg-gray-900 text-slate-200' : 'bg-gray-50 text-slate-800'}`}>
                     
@@ -244,31 +293,27 @@
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                             <div className="flex flex-col md:flex-row justify-between items-center py-3 md:h-16 md:py-0 gap-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="bg-indigo-600 text-white p-1.5 rounded-lg shadow-sm">
-                                        <Home size={20} />
+                                    <div className="bg-red-600 text-white p-1.5 rounded-lg shadow-sm animate-pulse">
+                                        <Cloud size={20} />
                                     </div>
                                     <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
-                                        Rental<span className="text-indigo-600 dark:text-indigo-400">Tracker</span>
+                                        Rental<span className="text-red-600">Live</span>
                                     </span>
-                                    <span className="text-[10px] bg-slate-100 dark:bg-gray-700 text-slate-500 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium border border-slate-200 dark:border-gray-600">
-                                        GitHub Local
+                                    <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium border border-red-200 flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping"></span> Shared DB
                                     </span>
                                 </div>
                                 <div className="flex gap-2 text-xs font-medium items-center">
                                     <button onClick={() => setDarkMode(!darkMode)} className="text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-lg transition mr-2">
                                         {darkMode ? <Sun size={20} /> : <Moon size={20} />}
                                     </button>
-                                    
-                                    <button onClick={handleLoadDefaultBackup} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Load built-in backup">
-                                        <RefreshCw size={16} /> <span className="hidden sm:inline">Reset</span>
-                                    </button>
 
-                                    <button onClick={() => fileInputRef.current.click()} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Upload JSON file">
+                                    <button onClick={() => fileInputRef.current.click()} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Import JSON to DB">
                                         <Upload size={16} /> <span className="hidden sm:inline">Import</span>
                                     </button>
                                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".json" className="hidden" />
 
-                                    <button onClick={handleExport} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Download backup">
+                                    <button onClick={handleExport} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Backup DB to JSON">
                                         <Download size={16} /> <span className="hidden sm:inline">Export</span>
                                     </button>
                                 </div>
@@ -281,39 +326,13 @@
                         
                         {/* LEFT SIDEBAR */}
                         <div className="lg:col-span-4 space-y-6">
-                            {/* Affordability Widget */}
-                            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 relative overflow-hidden">
-                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 via-yellow-400 to-red-500"></div>
-                                <h3 className="text-xs font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">Affordability Guide</h3>
-                                <div className="space-y-3">
-                                    <div className="flex items-center justify-between text-sm">
-                                        <span className="flex items-center gap-2 text-slate-600 dark:text-gray-300"><span className="w-2 h-2 rounded-full bg-green-500"></span>Safe</span>
-                                        <span className="font-bold text-slate-800 dark:text-white">&lt; R5,290</span>
-                                    </div>
-                                    <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5"><div className="bg-green-500 h-1.5 rounded-full" style={{width: '30%'}}></div></div>
-                                    <div className="flex items-center justify-between text-sm pt-2">
-                                        <span className="flex items-center gap-2 text-slate-600 dark:text-gray-300"><span className="w-2 h-2 rounded-full bg-yellow-500"></span>Stretch</span>
-                                        <span className="font-bold text-slate-800 dark:text-white">&lt; R6,200</span>
-                                    </div>
-                                    <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5"><div className="bg-yellow-500 h-1.5 rounded-full" style={{width: '60%'}}></div></div>
-                                    <div className="flex items-center justify-between text-sm pt-2">
-                                        <span className="flex items-center gap-2 text-slate-600 dark:text-gray-300"><span className="w-2 h-2 rounded-full bg-red-500"></span>Risk</span>
-                                        <span className="font-bold text-slate-800 dark:text-white">&gt; R6,700</span>
-                                    </div>
-                                    <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5"><div className="bg-red-500 h-1.5 rounded-full" style={{width: '100%'}}></div></div>
-                                </div>
-                            </div>
-
-                            {/* Form Card */}
                             <div className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6 sticky top-24 transition-all duration-300 ${editId ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-600' : 'border-gray-100 dark:border-gray-700'}`}>
                                 <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-4 mb-5">
                                     <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                                         {editId ? <Edit3 size={20} className="text-amber-500"/> : <Home size={20} className="text-indigo-600 dark:text-indigo-400" />}
                                         {editId ? 'Edit Property' : 'Add Property'}
                                     </h2>
-                                    {editId && (
-                                        <button onClick={resetForm} className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded transition">Cancel</button>
-                                    )}
+                                    {editId && <button onClick={resetForm} className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded transition">Cancel</button>}
                                 </div>
 
                                 <form onSubmit={handleSubmit} className="space-y-5">
@@ -379,6 +398,18 @@
 
                         {/* RIGHT SIDE (LISTINGS) */}
                         <div className="lg:col-span-8 space-y-6">
+                            
+                            {/* ERROR BANNER */}
+                            {error && (
+                                <div className="p-4 bg-red-100 border border-red-200 text-red-700 rounded-xl flex items-center gap-3">
+                                    <AlertTriangle size={24} />
+                                    <div>
+                                        <p className="font-bold">Connection Issue</p>
+                                        <p className="text-sm">{error}</p>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-24 z-30 lg:static">
                                 <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                                     <div className="relative">
@@ -409,14 +440,22 @@
                                         </select>
                                     </div>
                                 </div>
-                                <div className="text-xs font-medium text-slate-400 bg-slate-50 dark:bg-gray-700 px-3 py-1.5 rounded-full border border-slate-100 dark:border-gray-600">Showing <span className="font-bold text-slate-700 dark:text-white">{processedListings.length}</span> properties</div>
+                                <div className="text-xs font-medium text-slate-400 bg-slate-50 dark:bg-gray-700 px-3 py-1.5 rounded-full border border-slate-100 dark:border-gray-600">
+                                    Showing <span className="font-bold text-slate-700 dark:text-white">{processedListings.length}</span> properties
+                                </div>
                             </div>
 
-                            {processedListings.length === 0 ? (
+                            {loading ? (
+                                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                    <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                                    <div className="text-slate-400">Connecting to live database...</div>
+                                </div>
+                            ) : processedListings.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
                                     <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-full mb-4"><Search size={40} className="text-gray-300 dark:text-gray-500" /></div>
-                                    <h3 className="text-lg font-bold text-gray-400 dark:text-gray-500">No properties found</h3>
-                                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-xs">Use the form on the left to add your first potential home.</p>
+                                    <h3 className="text-lg font-bold text-gray-400 dark:text-gray-500">Database is empty</h3>
+                                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-xs mb-4">You are connected live, but there are no listings yet.</p>
+                                    <button onClick={handleInitializeDB} className="text-indigo-600 font-bold hover:underline">Upload Defaults</button>
                                 </div>
                             ) : (
                                 <div className="space-y-4">
