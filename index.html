@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rental Manager (Shared + Backup)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Rental Manager (PWA)</title>
+    
+    <!-- PWA Manifest Placeholder (Populated by JS) -->
+    <link rel="manifest" id="my-manifest">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -15,7 +23,12 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style> body { font-family: 'Inter', sans-serif; } </style>
+    <style> 
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; } 
+        /* Hide scrollbar for cleaner UI in horizontal scrolls */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
 </head>
 <body class="bg-gray-50 text-slate-800 transition-colors duration-300">
     <div id="root"></div>
@@ -25,7 +38,8 @@
         import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
         import { 
             Moon, Sun, Download, Upload, Trash2, ExternalLink, 
-            Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, Wifi, Cloud
+            Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, Wifi, Cloud,
+            ChevronDown, ChevronUp, Smartphone
         } from 'https://esm.sh/lucide-react@0.294.0';
         
         // Import Firebase SDKs
@@ -73,14 +87,79 @@
             const [editId, setEditId] = useState(null);
             const fileInputRef = useRef(null);
             
+            // Filter States
             const [filterArea, setFilterArea] = useState('all');
             const [filterType, setFilterType] = useState('all');
             const [sortOrder, setSortOrder] = useState('dateNew');
+            const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
+
+            // PWA Install State
+            const [deferredPrompt, setDeferredPrompt] = useState(null);
 
             const [formData, setFormData] = useState({
                 link: '', area: 'Hatfield', type: 'Bachelor', rent: '', deposit: '',
                 notes: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
             });
+
+            // --- PWA: MANIFEST & SERVICE WORKER & INSTALL ---
+            useEffect(() => {
+                // 1. Generate Manifest Dynamically
+                const manifest = {
+                    "name": "Enock's RentalLive",
+                    "short_name": "RentalLive",
+                    "start_url": ".",
+                    "display": "standalone",
+                    "background_color": "#ffffff",
+                    "theme_color": "#4f46e5",
+                    "icons": [
+                        { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+                        { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+                    ]
+                };
+                const stringManifest = JSON.stringify(manifest);
+                const blob = new Blob([stringManifest], {type: 'application/json'});
+                const manifestURL = URL.createObjectURL(blob);
+                document.querySelector('#my-manifest').setAttribute('href', manifestURL);
+
+                // 2. Register Service Worker (Blob approach for Single File)
+                if ('serviceWorker' in navigator) {
+                    const swCode = `
+                        const CACHE_NAME = 'rental-cache-v1';
+                        self.addEventListener('install', (e) => {
+                            e.waitUntil(
+                                caches.open(CACHE_NAME).then((cache) => {
+                                    return cache.addAll(['./', 'https://cdn.tailwindcss.com']);
+                                })
+                            );
+                        });
+                        self.addEventListener('fetch', (e) => {
+                            e.respondWith(
+                                caches.match(e.request).then((response) => response || fetch(e.request))
+                            );
+                        });
+                    `;
+                    const swBlob = new Blob([swCode], {type: 'application/javascript'});
+                    const swUrl = URL.createObjectURL(swBlob);
+                    navigator.serviceWorker.register(swUrl)
+                        .then(() => console.log('Service Worker Registered'))
+                        .catch(err => console.log('SW Fail:', err));
+                }
+
+                // 3. Listen for Install Prompt
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    setDeferredPrompt(e);
+                });
+            }, []);
+
+            const handleInstallClick = async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    setDeferredPrompt(null);
+                }
+            };
 
             // --- THEME ---
             useEffect(() => {
@@ -292,18 +371,39 @@
                     <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 backdrop-blur-md bg-opacity-90">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                             <div className="flex flex-col md:flex-row justify-between items-center py-3 md:h-16 md:py-0 gap-3">
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-red-600 text-white p-1.5 rounded-lg shadow-sm animate-pulse">
-                                        <Cloud size={20} />
+                                <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-red-600 text-white p-1.5 rounded-lg shadow-sm animate-pulse">
+                                            <Cloud size={20} />
+                                        </div>
+                                        <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                                            Enock's Rental<span className="text-red-600">Live</span>
+                                        </span>
+                                        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium border border-red-200 flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping"></span> Shared DB
+                                        </span>
                                     </div>
-                                    <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
-                                        Enock's Rental<span className="text-red-600">Live</span>
-                                    </span>
-                                    <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium border border-red-200 flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping"></span> Shared DB
-                                    </span>
+
+                                    {/* Mobile Actions Group */}
+                                    <div className="flex items-center gap-2 md:hidden">
+                                        {deferredPrompt && (
+                                            <button onClick={handleInstallClick} className="text-indigo-600 bg-indigo-50 p-2 rounded-lg animate-bounce">
+                                                <Smartphone size={20} />
+                                            </button>
+                                        )}
+                                        <button onClick={() => setDarkMode(!darkMode)} className="text-slate-600 dark:text-slate-300 bg-gray-100 dark:bg-gray-700 p-2 rounded-lg">
+                                            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex gap-2 text-xs font-medium items-center">
+
+                                <div className="hidden md:flex gap-2 text-xs font-medium items-center">
+                                    {deferredPrompt && (
+                                        <button onClick={handleInstallClick} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg transition flex items-center gap-1.5 mr-2">
+                                            <Smartphone size={16} /> Install App
+                                        </button>
+                                    )}
+
                                     <button onClick={() => setDarkMode(!darkMode)} className="text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-lg transition mr-2">
                                         {darkMode ? <Sun size={20} /> : <Moon size={20} />}
                                     </button>
@@ -410,38 +510,56 @@
                                 </div>
                             )}
 
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-24 z-30 lg:static">
-                                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                                    <div className="relative">
-                                        <select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer">
-                                            <option value="all">All Areas</option>
-                                            {areas.map(a => <option key={a} value={a}>{a}</option>)}
-                                        </select>
-                                        <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                            {/* MOBILE: COLLAPSIBLE FILTER HEADER */}
+                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 lg:static z-30 transition-all">
+                                {/* Filter Toggle Button (Mobile Only) */}
+                                <div 
+                                    className="p-4 flex items-center justify-between lg:hidden cursor-pointer bg-gray-50 dark:bg-gray-700/50 rounded-t-xl lg:rounded-none"
+                                    onClick={() => setShowFilters(!showFilters)}
+                                >
+                                    <div className="flex items-center gap-2 font-bold text-slate-700 dark:text-white">
+                                        <Filter size={18} /> Filters & Sort
                                     </div>
-                                    <div className="relative">
-                                        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer">
-                                            <option value="all">All Types</option>
-                                            <option value="Bachelor">Bachelor</option>
-                                            <option value="1 Bedroom">1 Bedroom</option>
-                                            <option value="2 Bedroom">2 Bedroom</option>
-                                            <option value="Garden Cottage">Garden Cottage</option>
-                                            <option value="House">House</option>
-                                            <option value="Communal">Communal</option>
-                                        </select>
-                                        <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
-                                    </div>
-                                    <div className="relative flex-1">
-                                        <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full cursor-pointer">
-                                            <option value="dateNew">📅 Date Added (Newest)</option>
-                                            <option value="priceAsc">💰 Monthly Cost (Low → High)</option>
-                                            <option value="priceDesc">💰 Monthly Cost (High → Low)</option>
-                                            <option value="moveInAsc">📦 Move-in Cost (Low → High)</option>
-                                        </select>
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                        {processedListings.length} results
+                                        {showFilters ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
                                     </div>
                                 </div>
-                                <div className="text-xs font-medium text-slate-400 bg-slate-50 dark:bg-gray-700 px-3 py-1.5 rounded-full border border-slate-100 dark:border-gray-600">
-                                    Showing <span className="font-bold text-slate-700 dark:text-white">{processedListings.length}</span> properties
+
+                                {/* Filter Controls Container */}
+                                <div className={`p-4 gap-4 flex-col md:flex-row justify-between items-center ${showFilters ? 'flex border-t dark:border-gray-700' : 'hidden lg:flex'}`}>
+                                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                                        <div className="relative">
+                                            <select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer">
+                                                <option value="all">All Areas</option>
+                                                {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                                            </select>
+                                            <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                                        </div>
+                                        <div className="relative">
+                                            <select value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer">
+                                                <option value="all">All Types</option>
+                                                <option value="Bachelor">Bachelor</option>
+                                                <option value="1 Bedroom">1 Bedroom</option>
+                                                <option value="2 Bedroom">2 Bedroom</option>
+                                                <option value="Garden Cottage">Garden Cottage</option>
+                                                <option value="House">House</option>
+                                                <option value="Communal">Communal</option>
+                                            </select>
+                                            <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                                        </div>
+                                        <div className="relative flex-1">
+                                            <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full cursor-pointer">
+                                                <option value="dateNew">📅 Date Added (Newest)</option>
+                                                <option value="priceAsc">💰 Monthly Cost (Low → High)</option>
+                                                <option value="priceDesc">💰 Monthly Cost (High → Low)</option>
+                                                <option value="moveInAsc">📦 Move-in Cost (Low → High)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="hidden lg:block text-xs font-medium text-slate-400 bg-slate-50 dark:bg-gray-700 px-3 py-1.5 rounded-full border border-slate-100 dark:border-gray-600">
+                                        Showing <span className="font-bold text-slate-700 dark:text-white">{processedListings.length}</span> properties
+                                    </div>
                                 </div>
                             </div>
 
