@@ -1,0 +1,609 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { createRoot } from 'react-dom/client';
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  onSnapshot, 
+  writeBatch 
+} from 'firebase/firestore';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  signInWithCustomToken
+} from 'firebase/auth';
+import { 
+  Moon, 
+  Sun, 
+  Download, 
+  Upload, 
+  Trash2, 
+  ExternalLink, 
+  Edit3,
+  RefreshCw,
+  Search,
+  Filter,
+  Check,
+  AlertTriangle,
+  XCircle,
+  Home
+} from 'lucide-react';
+
+// --- FIREBASE SETUP ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'rental-tracker-v2';
+
+// --- CONSTANTS ---
+const COST_ELEC = 500;
+const COST_WIFI = 625;
+const COST_ADMIN = 1500;
+
+const INITIAL_BACKUP_DATA = [
+  {"id":1764893587189,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/a2-the-purple-tree/1015-stanza-bopape-street/RR3981661","area":"Hatfield","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":true,"closeToUp":true,"effectiveRent":5790,"addedAt":"2025-12-05T00:13:07.189Z"},
+  {"id":1764893711674,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/b1-the-purple-tree/1015-stanza-bopape-street/RR3981667","area":"Hatfield","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":false,"closeToUp":true,"effectiveRent":6290,"addedAt":"2025-12-05T00:15:11.674Z"},
+  {"id":1764894012619,"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/210-amos-street/RR2496470","area":"Hatfield","type":"Garden Cottage","rent":5000,"deposit":5000,"elecIncluded":true,"wifiIncluded":true,"adminFee":false,"closeToUp":true,"effectiveRent":5000,"moveInCost":10000,"addedAt":"2025-12-05T00:20:12.619Z"},
+  {"id":1764895066049,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/113578114","area":"Hillcrest","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":false,"closeToUp":true,"effectiveRent":6290,"addedAt":"2025-12-05T00:37:46.049Z"},
+  {"id":1764895553622,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/116702413","area":"Hillcrest","type":"Bachelor","rent":4900,"deposit":4900,"elecIncluded":false,"closeToUp":true,"effectiveRent":5400,"addedAt":"2025-12-05T00:45:53.622Z"},
+  {"id":1764896875653,"link":"https://www.property24.com/to-rent/sunnyside/pretoria/gauteng/41/116709959","area":"Sunnyside","type":"Bachelor","rent":4000,"deposit":4000,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5125,"moveInCost":9500,"addedAt":"2025-12-05T01:07:55.653Z"},
+  {"id":1764897160444,"link":"https://www.property24.com/to-rent/sunnyside/pretoria/gauteng/41/116687648","area":"Sunnyside","type":"Bachelor","rent":3950,"deposit":3950,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5075,"moveInCost":9400,"addedAt":"2025-12-05T01:12:40.444Z"},
+  {"id":1764897247355,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116688026","area":"Arcadia","type":"Bachelor","rent":4410,"deposit":4410,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":5535,"moveInCost":10320,"addedAt":"2025-12-05T01:14:07.355Z"},
+  {"id":1764897382866,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116688094","area":"Arcadia","type":"1 Bedroom","rent":4882,"deposit":4882,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":6007,"moveInCost":11264,"addedAt":"2025-12-05T01:16:22.866Z"},
+  {"id":1764897462091,"link":"https://www.property24.com/to-rent/hatfield/pretoria/gauteng/304/116689952","area":"Hatfield","type":"Bachelor","rent":5300,"deposit":5300,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":true,"effectiveRent":6425,"moveInCost":12100,"addedAt":"2025-12-05T01:17:42.091Z"},
+  {"id":1764897552550,"link":"https://www.property24.com/to-rent/arcadia/pretoria/gauteng/301/116693688","area":"Arcadia","type":"1 Bedroom","rent":5700,"deposit":5700,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":false,"effectiveRent":6825,"moveInCost":12900,"addedAt":"2025-12-05T01:19:12.550Z"},
+  {"id":1764897631660,"link":"https://www.property24.com/to-rent/hillcrest/pretoria/gauteng/305/110437916","area":"Hillcrest","type":"Bachelor","rent":5850,"deposit":5850,"elecIncluded":false,"wifiIncluded":false,"adminFee":true,"closeToUp":true,"effectiveRent":6975,"moveInCost":13200,"addedAt":"2025-12-05T01:20:31.660Z"}
+];
+
+export default function App() {
+  // --- STATE ---
+  const [user, setUser] = useState(null);
+  const [listings, setListings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
+  
+  // Form State
+  const [editId, setEditId] = useState(null);
+  const [formData, setFormData] = useState({
+    link: '',
+    area: 'Hatfield',
+    type: 'Bachelor',
+    rent: '',
+    deposit: '',
+    notes: '',
+    elecIncluded: false,
+    wifiIncluded: false,
+    adminFee: false,
+    closeToUp: false
+  });
+
+  // Filter State
+  const [filterArea, setFilterArea] = useState('all');
+  const [filterType, setFilterType] = useState('all');
+  const [sortOrder, setSortOrder] = useState('dateNew');
+
+  const areas = ["Hatfield", "Muckleneuk", "Brooklyn", "Arcadia", "Sunnyside", "Menlo Park", "Queenswood", "Colbyn", "Hillcrest"];
+
+  // --- FIREBASE AUTH & LOAD ---
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    return onAuthStateChanged(auth, u => {
+      setUser(u);
+      if(!u) setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'rentals'));
+    const unsub = onSnapshot(q, snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setListings(data);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // --- LOGIC ---
+  const handleInputChange = (e) => {
+    const { id, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [id]: type === 'checkbox' ? checked : value
+    }));
+    // Auto-sync deposit to rent if deposit is empty
+    if (id === 'rent' && formData.deposit === '') {
+      setFormData(prev => ({ ...prev, deposit: value }));
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+
+    const rawRent = Number(formData.rent);
+    const rawDeposit = Number(formData.deposit);
+    
+    const effectiveRent = rawRent + 
+      (formData.elecIncluded ? 0 : COST_ELEC) + 
+      (formData.wifiIncluded ? 0 : COST_WIFI);
+      
+    const moveInCost = rawRent + rawDeposit + 
+      (formData.adminFee ? COST_ADMIN : 0);
+
+    const payload = {
+      ...formData,
+      rent: rawRent,
+      deposit: rawDeposit,
+      effectiveRent,
+      moveInCost,
+      addedAt: editId ? undefined : new Date().toISOString()
+    };
+
+    try {
+      if (editId) {
+        // Update
+        const { addedAt, ...updateData } = payload; // Don't update addedAt
+        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'rentals', editId), updateData);
+        setEditId(null);
+      } else {
+        // Add
+        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'rentals'), payload);
+      }
+      resetForm();
+    } catch (err) {
+      console.error(err);
+      alert("Error saving. Please try again.");
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      link: '', area: 'Hatfield', type: 'Bachelor', rent: '', deposit: '',
+      notes: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
+    });
+    setEditId(null);
+  };
+
+  const handleEdit = (item) => {
+    setEditId(item.id);
+    setFormData({
+      link: item.link || '',
+      area: item.area || 'Hatfield',
+      type: item.type || 'Bachelor',
+      rent: item.rent || '',
+      deposit: item.deposit || '',
+      notes: item.notes || '',
+      elecIncluded: item.elecIncluded || false,
+      wifiIncluded: item.wifiIncluded || false,
+      adminFee: item.adminFee || false,
+      closeToUp: item.closeToUp || false
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this listing?")) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'rentals', id));
+      if (editId === id) resetForm();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!user) return;
+    if (!window.confirm("Restore original backup data? This will add entries to your current list.")) return;
+    setLoading(true);
+    const batch = writeBatch(db);
+    const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'rentals');
+    
+    INITIAL_BACKUP_DATA.forEach(item => {
+      const { id, ...data } = item;
+      const ref = doc(colRef);
+      batch.set(ref, data);
+    });
+
+    try {
+      await batch.commit();
+      alert("Backup restored successfully!");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to restore backup.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- FILTER & SORT ---
+  const processedListings = listings
+    .filter(l => (filterArea === 'all' || l.area === filterArea))
+    .filter(l => (filterType === 'all' || l.type === filterType))
+    .sort((a, b) => {
+      if (sortOrder === 'dateNew') return new Date(b.addedAt || 0) - new Date(a.addedAt || 0);
+      if (sortOrder === 'priceAsc') return (a.effectiveRent || 0) - (b.effectiveRent || 0);
+      if (sortOrder === 'priceDesc') return (b.effectiveRent || 0) - (a.effectiveRent || 0);
+      if (sortOrder === 'moveInAsc') return (a.moveInCost || 0) - (b.moveInCost || 0);
+      return 0;
+    });
+
+  // --- UI HELPERS ---
+  const getBadge = (rent) => {
+    if (rent <= 5290) return { label: 'Affordable', icon: <Check size={12} />, color: 'text-green-700 bg-green-100 border-green-200' };
+    if (rent <= 6200) return { label: 'Stretch', icon: <AlertTriangle size={12} />, color: 'text-yellow-700 bg-yellow-100 border-yellow-200' };
+    return { label: 'Risk', icon: <XCircle size={12} />, color: 'text-red-700 bg-red-100 border-red-200' };
+  };
+
+  return (
+    <div className={`min-h-screen font-sans transition-colors duration-300 ${darkMode ? 'dark bg-gray-900 text-slate-200' : 'bg-gray-50 text-slate-800'}`}>
+      
+      {/* NAVBAR */}
+      <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 backdrop-blur-md bg-opacity-90">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center py-3 md:h-16 md:py-0 gap-3">
+            
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <div className="bg-indigo-600 text-white p-1.5 rounded-lg shadow-sm">
+                <Home size={20} />
+              </div>
+              <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                Rental<span className="text-indigo-600 dark:text-indigo-400">Tracker</span>
+              </span>
+              <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium border border-green-200">
+                Online
+              </span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 text-xs font-medium items-center">
+              <button 
+                onClick={() => setDarkMode(!darkMode)}
+                className="text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-lg transition mr-2"
+              >
+                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+              
+              <button 
+                onClick={handleRestoreBackup}
+                className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5"
+              >
+                <Download size={16} /> Load Backup
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* MAIN CONTENT */}
+      <div className="max-w-7xl mx-auto p-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 mt-6 pb-20">
+        
+        {/* LEFT SIDEBAR (FORM & STATS) */}
+        <div className="lg:col-span-4 space-y-6">
+          
+          {/* Affordability Widget */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 via-yellow-400 to-red-500"></div>
+            <h3 className="text-xs font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+               Affordability Guide
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-slate-600 dark:text-gray-300"><span className="w-2 h-2 rounded-full bg-green-500"></span>Safe</span>
+                <span className="font-bold text-slate-800 dark:text-white">&lt; R5,290</span>
+              </div>
+              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5"><div className="bg-green-500 h-1.5 rounded-full" style={{width: '30%'}}></div></div>
+              
+              <div className="flex items-center justify-between text-sm pt-2">
+                <span className="flex items-center gap-2 text-slate-600 dark:text-gray-300"><span className="w-2 h-2 rounded-full bg-yellow-500"></span>Stretch</span>
+                <span className="font-bold text-slate-800 dark:text-white">&lt; R6,200</span>
+              </div>
+              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5"><div className="bg-yellow-500 h-1.5 rounded-full" style={{width: '60%'}}></div></div>
+              
+              <div className="flex items-center justify-between text-sm pt-2">
+                <span className="flex items-center gap-2 text-slate-600 dark:text-gray-300"><span className="w-2 h-2 rounded-full bg-red-500"></span>Risk</span>
+                <span className="font-bold text-slate-800 dark:text-white">&gt; R6,700</span>
+              </div>
+              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5"><div className="bg-red-500 h-1.5 rounded-full" style={{width: '100%'}}></div></div>
+            </div>
+          </div>
+
+          {/* Form Card */}
+          <div className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6 sticky top-24 transition-all duration-300 ${editId ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-600' : 'border-gray-100 dark:border-gray-700'}`}>
+            <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-4 mb-5">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                {editId ? <Edit3 size={20} className="text-amber-500"/> : <Home size={20} className="text-indigo-600 dark:text-indigo-400" />}
+                {editId ? 'Edit Property' : 'Add Property'}
+              </h2>
+              {editId && (
+                <button onClick={resetForm} className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded transition">
+                  Cancel
+                </button>
+              )}
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Listing URL</label>
+                <input 
+                  type="url" 
+                  id="link"
+                  value={formData.link}
+                  onChange={handleInputChange}
+                  placeholder="Paste link..." 
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none text-sm" 
+                  required 
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Area</label>
+                  <select 
+                    id="area" 
+                    value={formData.area}
+                    onChange={handleInputChange}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm cursor-pointer dark:text-white"
+                  >
+                    {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Type</label>
+                  <select 
+                    id="type"
+                    value={formData.type}
+                    onChange={handleInputChange}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm cursor-pointer dark:text-white"
+                  >
+                    <option value="Bachelor">Bachelor / Studio</option>
+                    <option value="1 Bedroom">1 Bedroom</option>
+                    <option value="2 Bedroom">2 Bedroom</option>
+                    <option value="Garden Cottage">Garden Cottage</option>
+                    <option value="House">House</option>
+                    <option value="Communal">Communal</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Rent (R)</label>
+                  <input 
+                    type="number" 
+                    id="rent"
+                    value={formData.rent}
+                    onChange={handleInputChange}
+                    placeholder="0" 
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium dark:text-white" 
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Deposit (R)</label>
+                  <input 
+                    type="number" 
+                    id="deposit" 
+                    value={formData.deposit}
+                    onChange={handleInputChange}
+                    placeholder="0" 
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium dark:text-white" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Notes / Amenities</label>
+                <textarea 
+                  id="notes" 
+                  value={formData.notes}
+                  onChange={handleInputChange}
+                  rows="2" 
+                  placeholder="e.g. Near HPC Gym, Quiet street..." 
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:text-white"
+                ></textarea>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                {/* Switches */}
+                {[
+                  { id: 'elecIncluded', label: 'Electricity Included?', sub: '+R500 if No', color: 'bg-green-500' },
+                  { id: 'wifiIncluded', label: 'WiFi Included?', sub: '+R625 if No', color: 'bg-indigo-600' },
+                  { id: 'adminFee', label: 'Admin Fee?', sub: '+R1500 (One-off)', color: 'bg-slate-600' }
+                ].map(item => (
+                  <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-700">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-slate-700 dark:text-gray-200">{item.label}</span>
+                      <span className={`text-[10px] font-medium ${item.id==='adminFee'?'text-slate-400':'text-orange-500'}`}>{item.sub}</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        id={item.id}
+                        checked={formData[item.id]}
+                        onChange={handleInputChange}
+                        className="sr-only peer" 
+                      />
+                      <div className={`w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all ${formData[item.id] ? item.color : ''}`}></div>
+                    </label>
+                  </div>
+                ))}
+                
+                <div className="flex items-center gap-2 mt-2">
+                  <input 
+                    type="checkbox" 
+                    id="closeToUp"
+                    checked={formData.closeToUp}
+                    onChange={handleInputChange}
+                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer dark:bg-gray-700 dark:border-gray-600" 
+                  />
+                  <label htmlFor="closeToUp" className="text-sm text-slate-600 dark:text-gray-300 cursor-pointer select-none">Close to UP? (Walking Distance)</label>
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-[0.98] flex justify-center items-center gap-2 ${editId ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30'}`}
+              >
+                {editId ? <RefreshCw size={18}/> : <Upload size={18}/>}
+                {editId ? 'Update Property' : 'Save Property'}
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* RIGHT SIDE (LISTINGS) */}
+        <div className="lg:col-span-8 space-y-6">
+          
+          {/* Filters Bar */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-24 z-30 lg:static">
+             <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                <div className="relative">
+                  <select 
+                    value={filterArea} 
+                    onChange={e => setFilterArea(e.target.value)}
+                    className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer"
+                  >
+                    <option value="all">All Areas</option>
+                    {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                  <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                </div>
+
+                <div className="relative">
+                  <select 
+                    value={filterType}
+                    onChange={e => setFilterType(e.target.value)}
+                    className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="Bachelor">Bachelor</option>
+                    <option value="1 Bedroom">1 Bedroom</option>
+                    <option value="2 Bedroom">2 Bedroom</option>
+                    <option value="Garden Cottage">Garden Cottage</option>
+                    <option value="House">House</option>
+                    <option value="Communal">Communal</option>
+                  </select>
+                  <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                </div>
+
+                <div className="relative flex-1">
+                  <select 
+                    value={sortOrder}
+                    onChange={e => setSortOrder(e.target.value)}
+                    className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full cursor-pointer"
+                  >
+                    <option value="dateNew">📅 Date Added (Newest)</option>
+                    <option value="priceAsc">💰 Monthly Cost (Low → High)</option>
+                    <option value="priceDesc">💰 Monthly Cost (High → Low)</option>
+                    <option value="moveInAsc">📦 Move-in Cost (Low → High)</option>
+                  </select>
+                </div>
+             </div>
+             
+             <div className="text-xs font-medium text-slate-400 bg-slate-50 dark:bg-gray-700 px-3 py-1.5 rounded-full border border-slate-100 dark:border-gray-600">
+               Showing <span className="font-bold text-slate-700 dark:text-white">{processedListings.length}</span> properties
+             </div>
+          </div>
+
+          {/* LISTINGS CONTAINER */}
+          {processedListings.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
+              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-full mb-4">
+                <Search size={40} className="text-gray-300 dark:text-gray-500" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-400 dark:text-gray-500">No properties found</h3>
+              <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-xs">Use the form on the left to add your first potential home.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {processedListings.map(item => {
+                const badge = getBadge(item.effectiveRent);
+                return (
+                  <div key={item.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-0 overflow-hidden transition-all hover:shadow-md dark:hover:border-gray-600 group">
+                    <div className="p-5 flex flex-col md:flex-row gap-5 justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
+                          <span className={`${badge.color} border text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1`}>
+                            {badge.icon} {badge.label}
+                          </span>
+                          <span className="bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 border border-slate-200 dark:border-gray-600 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">
+                            {item.area}
+                          </span>
+                          <span className="bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 border border-slate-200 dark:border-gray-600 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">
+                            {item.type}
+                          </span>
+                          {item.closeToUp && (
+                            <span className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1">
+                              🎓 Near UP
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">R {item.effectiveRent?.toLocaleString()}</span>
+                          <span className="text-xs text-slate-400 dark:text-gray-500 font-medium uppercase tracking-wide">/mo (Effective)</span>
+                        </div>
+
+                        <div className="mt-3 text-xs text-slate-500 dark:text-gray-400 bg-slate-50 dark:bg-gray-700/50 p-3 rounded-lg border border-slate-100 dark:border-gray-700 grid grid-cols-2 gap-y-1 gap-x-4 max-w-md">
+                           <span className="text-slate-400 dark:text-gray-500">Base Rent:</span><span className="font-bold text-slate-700 dark:text-gray-200 text-right">R {item.rent?.toLocaleString()}</span>
+                           <span className="text-slate-400 dark:text-gray-500">Electricity:</span><span className="text-right">{item.elecIncluded ? <span className="text-green-600 dark:text-green-400 font-bold">Included</span> : <span className="text-orange-500 font-medium">+ R500 (Est)</span>}</span>
+                           <span className="text-slate-400 dark:text-gray-500">WiFi:</span><span className="text-right">{item.wifiIncluded ? <span className="text-green-600 dark:text-green-400 font-bold">Included</span> : <span className="text-indigo-500 dark:text-indigo-400 font-medium">+ R625 (Rain)</span>}</span>
+                        </div>
+
+                        {item.notes && (
+                          <div className="mt-3 text-xs text-slate-500 dark:text-gray-400 italic bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-100 dark:border-yellow-800/30">
+                            📝 {item.notes}
+                          </div>
+                        )}
+
+                        <div className="mt-4 flex gap-3">
+                          <a href={item.link} target="_blank" className="bg-slate-800 hover:bg-slate-900 dark:bg-gray-700 dark:hover:bg-gray-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5 shadow-sm">
+                            View Listing <ExternalLink size={12}/>
+                          </a>
+                          <button onClick={() => handleEdit(item)} className="bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/40 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5">
+                            Edit Details
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-row md:flex-col justify-between items-end border-t md:border-t-0 pt-4 md:pt-0 mt-2 md:mt-0 md:pl-6 md:border-l border-slate-100 dark:border-gray-700 min-w-[140px]">
+                        <div className="text-right">
+                          <div className="text-[10px] text-slate-400 dark:text-gray-500 uppercase font-bold tracking-wider mb-1">Total Move-in Cost</div>
+                          <div className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">R {item.moveInCost?.toLocaleString()}</div>
+                          <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-1 flex flex-col items-end gap-0.5">
+                            <span>Rent: R{item.rent?.toLocaleString()}</span>
+                            <span>Dep: R{item.deposit?.toLocaleString()}</span>
+                            {item.adminFee ? <span className="text-red-400 font-medium">+ Admin: R1500</span> : <span className="text-green-500 dark:text-green-400">No Admin Fee</span>}
+                          </div>
+                        </div>
+                        <button onClick={() => handleDelete(item.id)} className="text-slate-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg transition mt-4" title="Delete Property">
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
