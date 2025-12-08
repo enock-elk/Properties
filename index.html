@@ -8,6 +8,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Rental Manager (PWA)</title>
     
+    <!-- FAVICON -->
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    
     <!-- PWA Manifest Placeholder (Populated by JS) -->
     <link rel="manifest" id="my-manifest">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -34,12 +37,12 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18.2.0';
+        import React, { useState, useEffect, useRef, useMemo } from 'https://esm.sh/react@18.2.0';
         import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
         import { 
             Moon, Sun, Download, Upload, Trash2, ExternalLink, 
             Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, Wifi, Cloud,
-            ChevronDown, ChevronUp, Smartphone
+            ChevronDown, ChevronUp, Smartphone, Plus, List
         } from 'https://esm.sh/lucide-react@0.294.0';
         
         // Import Firebase SDKs
@@ -72,6 +75,9 @@
         const COST_ELEC = 500;
         const COST_WIFI = 625;
         const COST_ADMIN = 1500;
+        
+        // Default areas list - will be augmented by DB data
+        const DEFAULT_AREAS = ["Hatfield", "Muckleneuk", "Brooklyn", "Arcadia", "Sunnyside", "Menlo Park", "Queenswood", "Colbyn", "Hillcrest"];
 
         // Fallback data
         const INITIAL_BACKUP_DATA = [
@@ -93,13 +99,22 @@
             const [sortOrder, setSortOrder] = useState('dateNew');
             const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
 
-            // PWA Install State
-            const [deferredPrompt, setDeferredPrompt] = useState(null);
-
+            // Form States
+            const [isCustomArea, setIsCustomArea] = useState(false);
             const [formData, setFormData] = useState({
                 link: '', area: 'Hatfield', type: 'Bachelor', rent: '', deposit: '',
                 notes: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
             });
+
+            // PWA Install State
+            const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+            // Compute available areas dynamically from DB + Defaults
+            const availableAreas = useMemo(() => {
+                const dbAreas = listings.map(l => l.area).filter(Boolean);
+                const combined = new Set([...DEFAULT_AREAS, ...dbAreas]);
+                return Array.from(combined).sort();
+            }, [listings]);
 
             // --- PWA: MANIFEST & SERVICE WORKER & INSTALL ---
             useEffect(() => {
@@ -279,9 +294,35 @@
             // --- CRUD OPERATIONS ---
             const handleInputChange = (e) => {
                 const { id, value, type, checked } = e.target;
-                setFormData(prev => ({ ...prev, [id]: type === 'checkbox' ? checked : value }));
-                if (id === 'rent' && formData.deposit === '') setFormData(prev => ({ ...prev, deposit: value }));
+                
+                setFormData(prev => {
+                    const newValue = type === 'checkbox' ? checked : value;
+                    const newData = { ...prev, [id]: newValue };
+                    
+                    // Smart Sync Logic:
+                    // Only auto-update deposit if it was previously empty 
+                    // OR if it matched the rent before this change (keeping them in sync).
+                    if (id === 'rent' && (prev.deposit === '' || prev.deposit === prev.rent)) {
+                        newData.deposit = newValue;
+                    }
+                    return newData;
+                });
             };
+
+            const toggleCustomArea = () => {
+                if (isCustomArea) {
+                    // Switching BACK to list
+                    // If current value is not in availableAreas, default to first available
+                    if (!availableAreas.includes(formData.area)) {
+                        setFormData(prev => ({ ...prev, area: availableAreas[0] || 'Hatfield' }));
+                    }
+                } else {
+                    // Switching TO custom
+                    // Clear it so they can type, or keep it? Let's keep it to make it editable
+                    // setFormData(prev => ({ ...prev, area: '' })); 
+                }
+                setIsCustomArea(!isCustomArea);
+            }
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
@@ -318,14 +359,19 @@
 
             const resetForm = () => {
                 setFormData({
-                    link: '', area: 'Hatfield', type: 'Bachelor', rent: '', deposit: '',
+                    link: '', area: availableAreas[0] || 'Hatfield', type: 'Bachelor', rent: '', deposit: '',
                     notes: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
                 });
+                setIsCustomArea(false);
                 setEditId(null);
             };
 
             const handleEdit = (item) => {
                 setEditId(item.id);
+                // Check if area is in default list, if not, activate custom mode
+                const isInList = availableAreas.includes(item.area);
+                setIsCustomArea(!isInList);
+                
                 setFormData({
                     link: item.link || '', area: item.area || 'Hatfield', type: item.type || 'Bachelor',
                     rent: item.rent || '', deposit: item.deposit || '', notes: item.notes || '',
@@ -361,8 +407,6 @@
                 if (rent <= 6200) return { label: 'Stretch', icon: <AlertTriangle size={12} />, color: 'text-yellow-700 bg-yellow-100 border-yellow-200' };
                 return { label: 'Risk', icon: <XCircle size={12} />, color: 'text-red-700 bg-red-100 border-red-200' };
             };
-
-            const areas = ["Hatfield", "Muckleneuk", "Brooklyn", "Arcadia", "Sunnyside", "Menlo Park", "Queenswood", "Colbyn", "Hillcrest"];
 
             return (
                 <div className={`min-h-screen font-sans ${darkMode ? 'dark bg-gray-900 text-slate-200' : 'bg-gray-50 text-slate-800'}`}>
@@ -442,10 +486,27 @@
                                     </div>
                                     <div className="grid grid-cols-1 gap-4">
                                         <div>
-                                            <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Area</label>
-                                            <select id="area" value={formData.area} onChange={handleInputChange} className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm cursor-pointer dark:text-white">
-                                                {areas.map(a => <option key={a} value={a}>{a}</option>)}
-                                            </select>
+                                            <div className="flex justify-between items-center mb-1.5">
+                                                <label className="text-xs font-bold uppercase text-slate-400 dark:text-gray-500">Area</label>
+                                                <button type="button" onClick={toggleCustomArea} className="text-[10px] flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                                                    {isCustomArea ? <><List size={10}/> Select from list</> : <><Plus size={10}/> Add New</>}
+                                                </button>
+                                            </div>
+                                            {isCustomArea ? (
+                                                <input 
+                                                    type="text" 
+                                                    id="area" 
+                                                    value={formData.area} 
+                                                    onChange={handleInputChange} 
+                                                    placeholder="Enter new area name..." 
+                                                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:text-white"
+                                                    autoFocus
+                                                />
+                                            ) : (
+                                                <select id="area" value={formData.area} onChange={handleInputChange} className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm cursor-pointer dark:text-white">
+                                                    {availableAreas.map(a => <option key={a} value={a}>{a}</option>)}
+                                                </select>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Type</label>
@@ -532,7 +593,7 @@
                                         <div className="relative">
                                             <select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer">
                                                 <option value="all">All Areas</option>
-                                                {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                                                {availableAreas.map(a => <option key={a} value={a}>{a}</option>)}
                                             </select>
                                             <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
                                         </div>
