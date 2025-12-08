@@ -294,7 +294,6 @@
             // --- CRUD OPERATIONS ---
             const handleInputChange = (e) => {
                 const { id, value, type, checked } = e.target;
-                
                 setFormData(prev => {
                     const newValue = type === 'checkbox' ? checked : value;
                     const newData = { ...prev, [id]: newValue };
@@ -470,7 +469,7 @@
                         
                         {/* LEFT SIDEBAR */}
                         <div className="lg:col-span-4 space-y-6">
-                            <div className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6 sticky top-24 transition-all duration-300 ${editId ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-600' : 'border-gray-100 dark:border-gray-700'}`}>
+                            <div className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6 sticky top-24 transition-all duration-300 max-h-[calc(100vh-8rem)] overflow-y-auto overscroll-contain ${editId ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-600' : 'border-gray-100 dark:border-gray-700'}`}>
                                 <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-4 mb-5">
                                     <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                                         {editId ? <Edit3 size={20} className="text-amber-500"/> : <Home size={20} className="text-indigo-600 dark:text-indigo-400" />}
