@@ -8,12 +8,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Rental Manager (PWA)</title>
     
-    <!-- FAVICON (Placeholder) -->
-    <link rel="icon" type="image/png" href="https://lucide.dev/favicon.ico">
+    <!-- FAVICON -->
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
     
     <!-- PWA Manifest Placeholder (Populated by JS) -->
     <link rel="manifest" id="my-manifest">
-    <link rel="apple-touch-icon" href="https://lucide.dev/favicon.ico">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -42,17 +42,16 @@
         import { 
             Moon, Sun, Download, Upload, Trash2, ExternalLink, 
             Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, Wifi, Cloud,
-            ChevronDown, ChevronUp, Smartphone, Plus, List
+            ChevronDown, ChevronUp, Smartphone, Plus, List, Phone, MessageCircle, User
         } from 'https://esm.sh/lucide-react@0.294.0';
         
-        // Import Firebase SDKs (Using 10.7.1 as per your original code to ensure compatibility)
+        // Import Firebase SDKs
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         // ------------------------------------------------------------------
         // FIREBASE CONFIGURATION
         // ------------------------------------------------------------------
-        // Note: These are your specific credentials from the uploaded file.
         const firebaseConfig = {
             apiKey: "AIzaSyCoP9KbK3fo6U5O0TV6CP8rAwfNjndlPUY",
             authDomain: "my-rent-data.firebaseapp.com",
@@ -94,6 +93,9 @@
             const [editId, setEditId] = useState(null);
             const fileInputRef = useRef(null);
             
+            // New State for Contact Modal
+            const [contactModalData, setContactModalData] = useState(null);
+            
             // Filter States
             const [filterArea, setFilterArea] = useState('all');
             const [filterType, setFilterType] = useState('all');
@@ -104,7 +106,7 @@
             const [isCustomArea, setIsCustomArea] = useState(false);
             const [formData, setFormData] = useState({
                 link: '', area: 'Hatfield', type: 'Bachelor', rent: '', deposit: '',
-                notes: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
+                notes: '', contactNumber: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
             });
 
             // PWA Install State
@@ -119,7 +121,6 @@
 
             // --- PWA: MANIFEST & SERVICE WORKER & INSTALL ---
             useEffect(() => {
-                // 1. Generate Manifest Dynamically
                 const manifest = {
                     "name": "Enock's RentalLive",
                     "short_name": "RentalLive",
@@ -128,8 +129,8 @@
                     "background_color": "#ffffff",
                     "theme_color": "#4f46e5",
                     "icons": [
-                        { "src": "https://lucide.dev/favicon.ico", "sizes": "192x192", "type": "image/png" },
-                        { "src": "https://lucide.dev/favicon.ico", "sizes": "512x512", "type": "image/png" }
+                        { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+                        { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
                     ]
                 };
                 const stringManifest = JSON.stringify(manifest);
@@ -138,8 +139,6 @@
                 const manifestEl = document.querySelector('#my-manifest');
                 if (manifestEl) manifestEl.setAttribute('href', manifestURL);
 
-                // 2. Register Service Worker (Blob approach for Single File)
-                // Note: Service Workers might be restricted in some preview environments/iframes
                 if ('serviceWorker' in navigator) {
                     const swCode = `
                         const CACHE_NAME = 'rental-cache-v1';
@@ -151,7 +150,6 @@
                             );
                         });
                         self.addEventListener('fetch', (e) => {
-                            // Simple pass-through for preview
                             e.respondWith(fetch(e.request));
                         });
                     `;
@@ -159,10 +157,9 @@
                     const swUrl = URL.createObjectURL(swBlob);
                     navigator.serviceWorker.register(swUrl)
                         .then(() => console.log('Service Worker Registered'))
-                        .catch(err => console.log('SW Fail (Expected in some previews):', err));
+                        .catch(err => console.log('SW Fail:', err));
                 }
 
-                // 3. Listen for Install Prompt
                 window.addEventListener('beforeinstallprompt', (e) => {
                     e.preventDefault();
                     setDeferredPrompt(e);
@@ -198,7 +195,7 @@
             // --- REAL-TIME DATA SYNC ---
             useEffect(() => {
                 if (!db) {
-                    setError("Database connection failed. Check console for details.");
+                    setError("Database connection failed.");
                     setLoading(false);
                     return;
                 }
@@ -229,7 +226,6 @@
             // --- IMPORT / EXPORT LOGIC ---
             
             const handleExport = () => {
-                // Remove internal ID field from export to avoid confusion
                 const cleanData = listings.map(({ id, effectiveRent, moveInCost, ...item }) => item);
                 const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cleanData));
                 const downloadAnchorNode = document.createElement('a');
@@ -251,27 +247,22 @@
                             return alert("Invalid file format. Expected a JSON array.");
                         }
 
-                        // Filter out items that are already in the DB (matching by Link)
                         const existingLinks = new Set(listings.map(l => l.link));
                         const newItems = uploadedData.filter(l => l.link && !existingLinks.has(l.link));
 
                         if (newItems.length === 0) {
-                            return alert("No new unique items found in file. All items already exist in database.");
+                            return alert("No new unique items found in file.");
                         }
 
-                        if (!window.confirm(`Found ${newItems.length} new items. Upload them to the shared database?`)) return;
+                        if (!window.confirm(`Found ${newItems.length} new items. Upload?`)) return;
 
                         setLoading(true);
-                        // Batch write to Firestore (limit 500 per batch)
                         const batch = writeBatch(db);
                         let count = 0;
                         
                         newItems.forEach(item => {
-                            if (count >= 400) return; // Simple safety limit for single batch
-                            
-                            // Remove ID if present in JSON, let Firestore generate new ID
+                            if (count >= 400) return; 
                             const { id, effectiveRent, moveInCost, ...itemData } = item;
-                            
                             const ref = doc(collection(db, "rentals"));
                             batch.set(ref, {
                                 ...itemData,
@@ -290,7 +281,7 @@
                     }
                 };
                 reader.readAsText(file);
-                e.target.value = null; // Reset input
+                e.target.value = null; 
             };
 
             // --- CRUD OPERATIONS ---
@@ -299,10 +290,6 @@
                 setFormData(prev => {
                     const newValue = type === 'checkbox' ? checked : value;
                     const newData = { ...prev, [id]: newValue };
-                    
-                    // Smart Sync Logic:
-                    // Only auto-update deposit if it was previously empty 
-                    // OR if it matched the rent before this change (keeping them in sync).
                     if (id === 'rent' && (prev.deposit === '' || prev.deposit === prev.rent)) {
                         newData.deposit = newValue;
                     }
@@ -312,15 +299,9 @@
 
             const toggleCustomArea = () => {
                 if (isCustomArea) {
-                    // Switching BACK to list
-                    // If current value is not in availableAreas, default to first available
                     if (!availableAreas.includes(formData.area)) {
                         setFormData(prev => ({ ...prev, area: availableAreas[0] || 'Hatfield' }));
                     }
-                } else {
-                    // Switching TO custom
-                    // Clear it so they can type, or keep it? Let's keep it to make it editable
-                    // setFormData(prev => ({ ...prev, area: '' })); 
                 }
                 setIsCustomArea(!isCustomArea);
             }
@@ -361,7 +342,7 @@
             const resetForm = () => {
                 setFormData({
                     link: '', area: availableAreas[0] || 'Hatfield', type: 'Bachelor', rent: '', deposit: '',
-                    notes: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
+                    notes: '', contactNumber: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
                 });
                 setIsCustomArea(false);
                 setEditId(null);
@@ -369,13 +350,13 @@
 
             const handleEdit = (item) => {
                 setEditId(item.id);
-                // Check if area is in default list, if not, activate custom mode
                 const isInList = availableAreas.includes(item.area);
                 setIsCustomArea(!isInList);
                 
                 setFormData({
                     link: item.link || '', area: item.area || 'Hatfield', type: item.type || 'Bachelor',
                     rent: item.rent || '', deposit: item.deposit || '', notes: item.notes || '',
+                    contactNumber: item.contactNumber || '',
                     elecIncluded: item.elecIncluded || false, wifiIncluded: item.wifiIncluded || false,
                     adminFee: item.adminFee || false, closeToUp: item.closeToUp || false
                 });
@@ -412,6 +393,39 @@
             return (
                 <div className={`min-h-screen font-sans ${darkMode ? 'dark bg-gray-900 text-slate-200' : 'bg-gray-50 text-slate-800'}`}>
                     
+                    {/* CONTACT MODAL */}
+                    {contactModalData && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setContactModalData(null)}>
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl scale-100 transform transition-all" onClick={e => e.stopPropagation()}>
+                                <div className="text-center mb-6">
+                                    <div className="mx-auto w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mb-3">
+                                        <User size={24} className="text-indigo-600 dark:text-indigo-400" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Contact Agent</h3>
+                                    <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">{contactModalData.contactNumber}</p>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <a href={`tel:${contactModalData.contactNumber}`} className="flex flex-col items-center justify-center gap-2 p-4 bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/30 text-green-700 dark:text-green-400 rounded-xl transition border border-green-200 dark:border-green-800 group">
+                                        <div className="bg-white dark:bg-green-900/40 p-2 rounded-full shadow-sm group-hover:scale-110 transition">
+                                            <Phone size={24} className="fill-current" />
+                                        </div>
+                                        <span className="font-bold text-sm">Call Now</span>
+                                    </a>
+                                    <a href={`https://wa.me/${contactModalData.contactNumber.replace(/[^0-9]/g, '')}`} target="_blank" className="flex flex-col items-center justify-center gap-2 p-4 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-xl transition border border-emerald-200 dark:border-emerald-800 group">
+                                        <div className="bg-white dark:bg-emerald-900/40 p-2 rounded-full shadow-sm group-hover:scale-110 transition">
+                                            <MessageCircle size={24} className="fill-current" />
+                                        </div>
+                                        <span className="font-bold text-sm">WhatsApp</span>
+                                    </a>
+                                </div>
+                                <button onClick={() => setContactModalData(null)} className="mt-6 w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-slate-600 dark:text-slate-300 font-bold rounded-xl transition">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* NAVBAR */}
                     <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 backdrop-blur-md bg-opacity-90">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -469,7 +483,7 @@
                     {/* MAIN CONTENT */}
                     <div className="max-w-7xl mx-auto p-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 mt-6 pb-20">
                         
-                        {/* LEFT SIDEBAR */}
+                        {/* LEFT SIDEBAR (Sticky on Desktop only) */}
                         <div className="lg:col-span-4 space-y-6">
                             <div className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6 lg:sticky lg:top-24 transition-all duration-300 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto lg:overscroll-contain no-scrollbar ${editId ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-600' : 'border-gray-100 dark:border-gray-700'}`}>
                                 <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-4 mb-5">
@@ -531,6 +545,13 @@
                                             <input type="number" id="deposit" value={formData.deposit} onChange={handleInputChange} placeholder="0" className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium dark:text-white" />
                                         </div>
                                     </div>
+                                    
+                                    {/* New Contact Number Field */}
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Landlord/Agent Number</label>
+                                        <input type="tel" id="contactNumber" value={formData.contactNumber} onChange={handleInputChange} placeholder="e.g. 082 123 4567" className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none text-sm" />
+                                    </div>
+
                                     <div>
                                         <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Notes / Amenities</label>
                                         <textarea id="notes" value={formData.notes} onChange={handleInputChange} rows="2" placeholder="e.g. Near HPC Gym, Quiet street..." className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:text-white"></textarea>
@@ -658,9 +679,16 @@
                                                             <span className="text-slate-400 dark:text-gray-500">WiFi:</span><span className="text-right">{item.wifiIncluded ? <span className="text-green-600 dark:text-green-400 font-bold">Included</span> : <span className="text-indigo-500 dark:text-indigo-400 font-medium">+ R625 (Rain)</span>}</span>
                                                         </div>
                                                         {item.notes && <div className="mt-3 text-xs text-slate-500 dark:text-gray-400 italic bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-100 dark:border-yellow-800/30">📝 {item.notes}</div>}
-                                                        <div className="mt-4 flex gap-3">
+                                                        
+                                                        {/* ACTION BUTTONS */}
+                                                        <div className="mt-4 flex flex-wrap gap-3">
                                                             <a href={item.link} target="_blank" className="bg-slate-800 hover:bg-slate-900 dark:bg-gray-700 dark:hover:bg-gray-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5 shadow-sm">View Listing <ExternalLink size={12}/></a>
-                                                            <button onClick={() => handleEdit(item)} className="bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/40 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5">Edit Details</button>
+                                                            <button onClick={() => handleEdit(item)} className="bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/40 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5">Edit</button>
+                                                            {item.contactNumber && (
+                                                                <button onClick={() => setContactModalData(item)} className="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5 animate-pulse hover:animate-none">
+                                                                    <Phone size={12}/> Contact
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-row md:flex-col justify-between items-end border-t md:border-t-0 pt-4 md:pt-0 mt-2 md:mt-0 md:pl-6 md:border-l border-slate-100 dark:border-gray-700 min-w-[140px]">
