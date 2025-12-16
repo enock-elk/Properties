@@ -6,14 +6,11 @@
     <meta name="theme-color" content="#4f46e5">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Rental Manager (PWA)</title>
+    <title>Rental Manager (Smart Detect)</title>
     
-    <!-- FAVICON (Added ?v=2 to force refresh) -->
-    <link rel="icon" type="image/png" href="icons/icon-192.png?v=2">
-    
-    <!-- PWA Manifest Placeholder (Populated by JS) -->
+    <link rel="icon" type="image/png" href="icons/icon-192.png?v=3">
     <link rel="manifest" id="my-manifest">
-    <link rel="apple-touch-icon" href="icons/icon-192.png?v=2">
+    <link rel="apple-touch-icon" href="icons/icon-192.png?v=3">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -28,7 +25,6 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style> 
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; } 
-        /* Hide scrollbar for cleaner UI in horizontal scrolls */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
@@ -42,16 +38,13 @@
         import { 
             Moon, Sun, Download, Upload, Trash2, ExternalLink, 
             Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, Wifi, Cloud,
-            ChevronDown, ChevronUp, Smartphone, Plus, List, Phone, MessageCircle, User, Copy
+            ChevronDown, ChevronUp, Smartphone, Plus, List, Phone, MessageCircle, User
         } from 'https://esm.sh/lucide-react@0.294.0';
         
-        // Import Firebase SDKs
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // ------------------------------------------------------------------
-        // FIREBASE CONFIGURATION
-        // ------------------------------------------------------------------
+        // --- FIREBASE CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyCoP9KbK3fo6U5O0TV6CP8rAwfNjndlPUY",
             authDomain: "my-rent-data.firebaseapp.com",
@@ -60,14 +53,11 @@
             messagingSenderId: "841323250976",
             appId: "1:841323250976:web:7d9f828ed79ac528ddc345"
         };
-        // ------------------------------------------------------------------
 
-        // Initialize Firebase
         let db;
         try {
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
-            console.log("Firebase initialized successfully");
         } catch (error) {
             console.error("Firebase init failed:", error);
         }
@@ -75,11 +65,25 @@
         const COST_ELEC = 500;
         const COST_WIFI = 625;
         const COST_ADMIN = 1500;
-        
-        // Default areas list - will be augmented by DB data
         const DEFAULT_AREAS = ["Hatfield", "Muckleneuk", "Brooklyn", "Arcadia", "Sunnyside", "Menlo Park", "Queenswood", "Colbyn", "Hillcrest"];
 
-        // Fallback data
+        // --- SMART URL NORMALIZER ---
+        // This strips http/https, www, and trailing slashes for better matching
+        const normalizeUrl = (url) => {
+            if (!url || typeof url !== 'string') return '';
+            let clean = url.trim().toLowerCase();
+            
+            // Remove protocol
+            clean = clean.replace(/^https?:\/\//, '');
+            // Remove www.
+            clean = clean.replace(/^www\./, '');
+            // Remove trailing slash
+            if (clean.endsWith('/')) {
+                clean = clean.slice(0, -1);
+            }
+            return clean;
+        };
+
         const INITIAL_BACKUP_DATA = [
             {"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/a2-the-purple-tree/1015-stanza-bopape-street/RR3981661","area":"Hatfield","type":"Bachelor","rent":5790,"deposit":5790,"elecIncluded":true,"closeToUp":true,"addedAt":"2025-12-05T00:13:07.189Z"},
             {"link":"https://www.privateproperty.co.za/to-rent/gauteng/pretoria/pretoria-central-and-old-east/hatfield/210-amos-street/RR2496470","area":"Hatfield","type":"Garden Cottage","rent":5000,"deposit":5000,"elecIncluded":true,"wifiIncluded":true,"adminFee":false,"closeToUp":true,"addedAt":"2025-12-05T00:20:12.619Z"}
@@ -93,14 +97,13 @@
             const [editId, setEditId] = useState(null);
             const fileInputRef = useRef(null);
             
-            // New State for Contact Modal
             const [contactModalData, setContactModalData] = useState(null);
             
             // Filter States
             const [filterArea, setFilterArea] = useState('all');
             const [filterType, setFilterType] = useState('all');
             const [sortOrder, setSortOrder] = useState('dateNew');
-            const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
+            const [showFilters, setShowFilters] = useState(false);
 
             // Form States
             const [isCustomArea, setIsCustomArea] = useState(false);
@@ -109,44 +112,49 @@
                 notes: '', contactNumber: '', elecIncluded: false, wifiIncluded: false, adminFee: false, closeToUp: false
             });
 
-            // PWA Install State
             const [deferredPrompt, setDeferredPrompt] = useState(null);
 
-            // Compute available areas dynamically from DB + Defaults
             const availableAreas = useMemo(() => {
                 const dbAreas = listings.map(l => l.area).filter(Boolean);
                 const combined = new Set([...DEFAULT_AREAS, ...dbAreas]);
                 return Array.from(combined).sort();
             }, [listings]);
 
-            // --- DUPLICATE DETECTION LOGIC ---
+            // --- SMART DUPLICATE DETECTION LOGIC ---
             
-            // 1. Check if the current form URL exists in the database (excluding current edit item)
+            // 1. Check if the current form URL exists in the database using Normalized URL
             const isDuplicateFormUrl = useMemo(() => {
                 if (!formData.link || formData.link.trim() === '') return false;
-                return listings.some(l => l.link === formData.link.trim() && l.id !== editId);
+                const cleanInput = normalizeUrl(formData.link);
+                // Check if any EXISTING item (ignoring the one we are currently editing) matches the normalized URL
+                return listings.some(l => l.id !== editId && normalizeUrl(l.link) === cleanInput);
             }, [formData.link, listings, editId]);
 
-            // 2. Identify all URLs in the list that appear more than once (for badges)
-            const duplicateUrlsInList = useMemo(() => {
-                const urlCounts = {};
+            // 2. Identify all Normalized URLs in the list that appear more than once
+            const duplicateIds = useMemo(() => {
+                const urlMap = {}; // NormalizedURL -> [IDs]
+                
                 listings.forEach(l => {
-                    if (l.link) {
-                        urlCounts[l.link] = (urlCounts[l.link] || 0) + 1;
+                    const clean = normalizeUrl(l.link);
+                    if (clean) {
+                        if (!urlMap[clean]) urlMap[clean] = [];
+                        urlMap[clean].push(l.id);
                     }
                 });
-                const duplicates = new Set();
-                Object.keys(urlCounts).forEach(url => {
-                    if (urlCounts[url] > 1) duplicates.add(url);
+
+                const dupSet = new Set();
+                Object.values(urlMap).forEach(ids => {
+                    if (ids.length > 1) {
+                        ids.forEach(id => dupSet.add(id));
+                    }
                 });
-                return duplicates;
+                return dupSet;
             }, [listings]);
 
-            // --- PWA: MANIFEST & SERVICE WORKER & INSTALL ---
+            // --- PWA SETUP ---
             useEffect(() => {
                 const manifest = {
-                    // Unique ID added to prevent conflict with other PWAs on same domain
-                    "id": "/rental-manager-app-v3", 
+                    "id": "/rental-smart-v4", 
                     "name": "Enock's RentalLive",
                     "short_name": "RentalLive",
                     "start_url": ".",
@@ -154,9 +162,8 @@
                     "background_color": "#ffffff",
                     "theme_color": "#4f46e5",
                     "icons": [
-                        // Added ?v=2 to force browser to re-fetch icon instead of using cache
-                        { "src": "icons/icon-192.png?v=2", "sizes": "192x192", "type": "image/png" },
-                        { "src": "icons/icon-512.png?v=2", "sizes": "512x512", "type": "image/png" }
+                        { "src": "icons/icon-192.png?v=3", "sizes": "192x192", "type": "image/png" },
+                        { "src": "icons/icon-512.png?v=3", "sizes": "512x512", "type": "image/png" }
                     ]
                 };
                 const stringManifest = JSON.stringify(manifest);
@@ -167,36 +174,18 @@
 
                 if ('serviceWorker' in navigator) {
                     const swCode = `
-                        // Updated cache name to force refresh
-                        const CACHE_NAME = 'rental-cache-v3';
+                        const CACHE_NAME = 'rental-smart-cache-v4';
                         self.addEventListener('install', (e) => {
-                            e.waitUntil(
-                                caches.open(CACHE_NAME).then((cache) => {
-                                    return cache.addAll(['./', 'https://cdn.tailwindcss.com']);
-                                })
-                            );
+                            e.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(['./', 'https://cdn.tailwindcss.com'])));
                         });
-                        self.addEventListener('fetch', (e) => {
-                            e.respondWith(fetch(e.request));
-                        });
-                        // Clean up old caches
+                        self.addEventListener('fetch', (e) => e.respondWith(fetch(e.request)));
                         self.addEventListener('activate', (e) => {
-                            e.waitUntil(
-                                caches.keys().then((keyList) => {
-                                    return Promise.all(keyList.map((key) => {
-                                        if (key !== CACHE_NAME) {
-                                            return caches.delete(key);
-                                        }
-                                    }));
-                                })
-                            );
+                            e.waitUntil(caches.keys().then((k) => Promise.all(k.map((key) => { if (key !== CACHE_NAME) return caches.delete(key); }))));
                         });
                     `;
                     const swBlob = new Blob([swCode], {type: 'application/javascript'});
                     const swUrl = URL.createObjectURL(swBlob);
-                    navigator.serviceWorker.register(swUrl)
-                        .then(() => console.log('Service Worker Registered'))
-                        .catch(err => console.log('SW Fail:', err));
+                    navigator.serviceWorker.register(swUrl).catch(console.error);
                 }
 
                 window.addEventListener('beforeinstallprompt', (e) => {
@@ -209,9 +198,7 @@
                 if (!deferredPrompt) return;
                 deferredPrompt.prompt();
                 const { outcome } = await deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    setDeferredPrompt(null);
-                }
+                if (outcome === 'accepted') setDeferredPrompt(null);
             };
 
             // --- THEME ---
@@ -220,25 +207,14 @@
                     setDarkMode(true);
                 }
             }, []);
-
             useEffect(() => {
-                if (darkMode) {
-                    document.documentElement.classList.add('dark');
-                    localStorage.setItem('theme', 'dark');
-                } else {
-                    document.documentElement.classList.remove('dark');
-                    localStorage.setItem('theme', 'light');
-                }
+                document.documentElement.classList.toggle('dark', darkMode);
+                localStorage.setItem('theme', darkMode ? 'dark' : 'light');
             }, [darkMode]);
 
-            // --- REAL-TIME DATA SYNC ---
+            // --- DATA SYNC ---
             useEffect(() => {
-                if (!db) {
-                    setError("Database connection failed.");
-                    setLoading(false);
-                    return;
-                }
-
+                if (!db) { setError("Database connection failed."); setLoading(false); return; }
                 const q = query(collection(db, "rentals"));
                 const unsubscribe = onSnapshot(q, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({
@@ -250,29 +226,21 @@
                     setListings(data);
                     setLoading(false);
                 }, (err) => {
-                    console.error("Sync Error:", err);
-                    if (err.code === 'permission-denied') {
-                        setError("Permission Denied: Please set Firestore Rules to 'allow read, write: if true;' in Firebase Console.");
-                    } else {
-                        setError("Connection Error: " + err.message);
-                    }
+                    if (err.code === 'permission-denied') setError("Permission Denied: Set Firestore Rules to public.");
+                    else setError("Connection Error: " + err.message);
                     setLoading(false);
                 });
-
                 return () => unsubscribe();
             }, []);
 
-            // --- IMPORT / EXPORT LOGIC ---
-            
+            // --- IMPORT/EXPORT ---
             const handleExport = () => {
                 const cleanData = listings.map(({ id, effectiveRent, moveInCost, ...item }) => item);
                 const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cleanData));
-                const downloadAnchorNode = document.createElement('a');
-                downloadAnchorNode.setAttribute("href", dataStr);
-                downloadAnchorNode.setAttribute("download", "rental_db_backup.json");
-                document.body.appendChild(downloadAnchorNode);
-                downloadAnchorNode.click();
-                downloadAnchorNode.remove();
+                const anchor = document.createElement('a');
+                anchor.href = dataStr;
+                anchor.download = "rental_db_backup.json";
+                anchor.click();
             };
 
             const handleFileUpload = async (e) => {
@@ -282,81 +250,62 @@
                 reader.onload = async (event) => {
                     try {
                         const uploadedData = JSON.parse(event.target.result);
-                        if (!Array.isArray(uploadedData)) {
-                            return alert("Invalid file format. Expected a JSON array.");
-                        }
+                        if (!Array.isArray(uploadedData)) return alert("Invalid JSON array.");
 
-                        const existingLinks = new Set(listings.map(l => l.link));
-                        const newItems = uploadedData.filter(l => l.link && !existingLinks.has(l.link));
+                        // Smart Check against existing Normalized URLs
+                        const existingNormalized = new Set(listings.map(l => normalizeUrl(l.link)));
+                        
+                        const newItems = uploadedData.filter(l => {
+                            // Only allow items with links that DO NOT exist in normalized set
+                            return l.link && !existingNormalized.has(normalizeUrl(l.link));
+                        });
 
-                        if (newItems.length === 0) {
-                            return alert("No new unique items found in file.");
-                        }
-
-                        if (!window.confirm(`Found ${newItems.length} new items. Upload?`)) return;
+                        if (newItems.length === 0) return alert("No new unique items found.");
+                        if (!window.confirm(`Found ${newItems.length} unique items. Upload?`)) return;
 
                         setLoading(true);
                         const batch = writeBatch(db);
                         let count = 0;
-                        
                         newItems.forEach(item => {
                             if (count >= 400) return; 
                             const { id, effectiveRent, moveInCost, ...itemData } = item;
                             const ref = doc(collection(db, "rentals"));
-                            batch.set(ref, {
-                                ...itemData,
-                                addedAt: itemData.addedAt || new Date().toISOString()
-                            });
+                            batch.set(ref, { ...itemData, addedAt: itemData.addedAt || new Date().toISOString() });
                             count++;
                         });
-
                         await batch.commit();
-                        alert(`Successfully uploaded ${count} items!`);
-                        setLoading(false);
-
-                    } catch (err) {
-                        alert("Error importing: " + err.message);
-                        setLoading(false);
-                    }
+                        alert(`Uploaded ${count} items!`);
+                    } catch (err) { alert("Error importing: " + err.message); }
+                    finally { setLoading(false); }
                 };
                 reader.readAsText(file);
                 e.target.value = null; 
             };
 
-            // --- CRUD OPERATIONS ---
             const handleInputChange = (e) => {
                 const { id, value, type, checked } = e.target;
                 setFormData(prev => {
                     const newValue = type === 'checkbox' ? checked : value;
                     const newData = { ...prev, [id]: newValue };
-                    if (id === 'rent' && (prev.deposit === '' || prev.deposit === prev.rent)) {
-                        newData.deposit = newValue;
-                    }
+                    if (id === 'rent' && (prev.deposit === '' || prev.deposit === prev.rent)) newData.deposit = newValue;
                     return newData;
                 });
             };
 
             const toggleCustomArea = () => {
-                if (isCustomArea) {
-                    if (!availableAreas.includes(formData.area)) {
-                        setFormData(prev => ({ ...prev, area: availableAreas[0] || 'Hatfield' }));
-                    }
+                if (isCustomArea && !availableAreas.includes(formData.area)) {
+                    setFormData(prev => ({ ...prev, area: availableAreas[0] || 'Hatfield' }));
                 }
                 setIsCustomArea(!isCustomArea);
             }
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                
-                // Block submission if duplicate exists
-                if (isDuplicateFormUrl) {
-                    alert("Cannot save: This property URL already exists in the database.");
-                    return;
-                }
+                if (isDuplicateFormUrl) return alert("This property is a duplicate!");
 
                 const payload = {
                     ...formData,
-                    link: formData.link.trim(),
+                    link: formData.link.trim(), // We still save the original link, just check normalized
                     rent: Number(formData.rent),
                     deposit: Number(formData.deposit),
                     addedAt: editId ? (listings.find(l => l.id === editId)?.addedAt) : new Date().toISOString()
@@ -370,19 +319,15 @@
                         await addDoc(collection(db, "rentals"), payload);
                     }
                     resetForm();
-                } catch (err) {
-                    alert("Error saving: " + err.message);
-                }
+                } catch (err) { alert("Error saving: " + err.message); }
             };
 
             const handleDelete = async (id) => {
-                if (!window.confirm("Delete this listing for everyone?")) return;
+                if (!window.confirm("Delete listing?")) return;
                 try {
                     await deleteDoc(doc(db, "rentals", id));
                     if (editId === id) resetForm();
-                } catch (err) {
-                    alert("Error deleting: " + err.message);
-                }
+                } catch (err) { alert("Error deleting: " + err.message); }
             };
 
             const resetForm = () => {
@@ -396,9 +341,7 @@
 
             const handleEdit = (item) => {
                 setEditId(item.id);
-                const isInList = availableAreas.includes(item.area);
-                setIsCustomArea(!isInList);
-                
+                setIsCustomArea(!availableAreas.includes(item.area));
                 setFormData({
                     link: item.link || '', area: item.area || 'Hatfield', type: item.type || 'Bachelor',
                     rent: item.rent || '', deposit: item.deposit || '', notes: item.notes || '',
@@ -410,12 +353,9 @@
             };
 
             const handleInitializeDB = async () => {
-                if (!window.confirm("This will upload default data to the shared database. Continue?")) return;
+                if (!window.confirm("Upload defaults?")) return;
                 const batch = writeBatch(db);
-                INITIAL_BACKUP_DATA.forEach(item => {
-                    const ref = doc(collection(db, "rentals"));
-                    batch.set(ref, item);
-                });
+                INITIAL_BACKUP_DATA.forEach(item => batch.set(doc(collection(db, "rentals")), item));
                 await batch.commit();
             };
 
@@ -450,7 +390,6 @@
                                     <h3 className="text-xl font-bold text-slate-800 dark:text-white">Contact Agent</h3>
                                     <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">{contactModalData.contactNumber}</p>
                                 </div>
-                                
                                 <div className="grid grid-cols-2 gap-4">
                                     <a href={`tel:${contactModalData.contactNumber}`} className="flex flex-col items-center justify-center gap-2 p-4 bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/30 text-green-700 dark:text-green-400 rounded-xl transition border border-green-200 dark:border-green-800 group">
                                         <div className="bg-white dark:bg-green-900/40 p-2 rounded-full shadow-sm group-hover:scale-110 transition">
@@ -465,9 +404,7 @@
                                         <span className="font-bold text-sm">WhatsApp</span>
                                     </a>
                                 </div>
-                                <button onClick={() => setContactModalData(null)} className="mt-6 w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-slate-600 dark:text-slate-300 font-bold rounded-xl transition">
-                                    Cancel
-                                </button>
+                                <button onClick={() => setContactModalData(null)} className="mt-6 w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-slate-600 dark:text-slate-300 font-bold rounded-xl transition">Cancel</button>
                             </div>
                         </div>
                     )}
@@ -488,39 +425,17 @@
                                             <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping"></span> Shared DB
                                         </span>
                                     </div>
-
-                                    {/* Mobile Actions Group */}
                                     <div className="flex items-center gap-2 md:hidden">
-                                        {deferredPrompt && (
-                                            <button onClick={handleInstallClick} className="text-indigo-600 bg-indigo-50 p-2 rounded-lg animate-bounce">
-                                                <Smartphone size={20} />
-                                            </button>
-                                        )}
-                                        <button onClick={() => setDarkMode(!darkMode)} className="text-slate-600 dark:text-slate-300 bg-gray-100 dark:bg-gray-700 p-2 rounded-lg">
-                                            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-                                        </button>
+                                        {deferredPrompt && <button onClick={handleInstallClick} className="text-indigo-600 bg-indigo-50 p-2 rounded-lg animate-bounce"><Smartphone size={20} /></button>}
+                                        <button onClick={() => setDarkMode(!darkMode)} className="text-slate-600 dark:text-slate-300 bg-gray-100 dark:bg-gray-700 p-2 rounded-lg">{darkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
                                     </div>
                                 </div>
-
                                 <div className="hidden md:flex gap-2 text-xs font-medium items-center">
-                                    {deferredPrompt && (
-                                        <button onClick={handleInstallClick} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg transition flex items-center gap-1.5 mr-2">
-                                            <Smartphone size={16} /> Install App
-                                        </button>
-                                    )}
-
-                                    <button onClick={() => setDarkMode(!darkMode)} className="text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-lg transition mr-2">
-                                        {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-                                    </button>
-
-                                    <button onClick={() => fileInputRef.current.click()} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Import JSON to DB">
-                                        <Upload size={16} /> <span className="hidden sm:inline">Import</span>
-                                    </button>
+                                    {deferredPrompt && <button onClick={handleInstallClick} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg transition flex items-center gap-1.5 mr-2"><Smartphone size={16} /> Install App</button>}
+                                    <button onClick={() => setDarkMode(!darkMode)} className="text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-lg transition mr-2">{darkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
+                                    <button onClick={() => fileInputRef.current.click()} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5"><Upload size={16} /> <span className="hidden sm:inline">Import</span></button>
                                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".json" className="hidden" />
-
-                                    <button onClick={handleExport} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Backup DB to JSON">
-                                        <Download size={16} /> <span className="hidden sm:inline">Export</span>
-                                    </button>
+                                    <button onClick={handleExport} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5"><Download size={16} /> <span className="hidden sm:inline">Export</span></button>
                                 </div>
                             </div>
                         </div>
@@ -528,84 +443,45 @@
 
                     {/* MAIN CONTENT */}
                     <div className="max-w-7xl mx-auto p-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 mt-6 pb-20">
-                        
-                        {/* LEFT SIDEBAR (Sticky on Desktop only) */}
+                        {/* LEFT SIDEBAR */}
                         <div className="lg:col-span-4 space-y-6">
                             <div className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6 lg:sticky lg:top-24 transition-all duration-300 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto lg:overscroll-contain no-scrollbar ${editId ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-600' : 'border-gray-100 dark:border-gray-700'}`}>
                                 <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-4 mb-5">
-                                    <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                        {editId ? <Edit3 size={20} className="text-amber-500"/> : <Home size={20} className="text-indigo-600 dark:text-indigo-400" />}
-                                        {editId ? 'Edit Property' : 'Add Property'}
-                                    </h2>
+                                    <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">{editId ? <Edit3 size={20} className="text-amber-500"/> : <Home size={20} className="text-indigo-600 dark:text-indigo-400" />} {editId ? 'Edit Property' : 'Add Property'}</h2>
                                     {editId && <button onClick={resetForm} className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded transition">Cancel</button>}
                                 </div>
-
                                 <form onSubmit={handleSubmit} className="space-y-5">
                                     <div>
                                         <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Listing URL</label>
                                         <input type="url" id="link" value={formData.link} onChange={handleInputChange} placeholder="Paste link..." className={`w-full p-2.5 bg-gray-50 dark:bg-gray-700 border rounded-lg focus:ring-2 outline-none text-sm dark:text-white transition-colors ${isDuplicateFormUrl ? 'border-red-500 focus:ring-red-200' : 'border-gray-200 dark:border-gray-600 focus:ring-indigo-500'}`} required />
-                                        
-                                        {/* DUPLICATE WARNING */}
-                                        {isDuplicateFormUrl && (
-                                            <div className="flex items-center gap-2 mt-2 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 p-2 rounded-lg text-xs font-bold animate-pulse">
-                                                <AlertTriangle size={14} />
-                                                This property URL is already listed!
-                                            </div>
-                                        )}
+                                        {isDuplicateFormUrl && <div className="flex items-center gap-2 mt-2 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 p-2 rounded-lg text-xs font-bold animate-pulse"><AlertTriangle size={14} /> This property URL is already listed!</div>}
                                     </div>
                                     <div className="grid grid-cols-1 gap-4">
                                         <div>
                                             <div className="flex justify-between items-center mb-1.5">
                                                 <label className="text-xs font-bold uppercase text-slate-400 dark:text-gray-500">Area</label>
-                                                <button type="button" onClick={toggleCustomArea} className="text-[10px] flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
-                                                    {isCustomArea ? <><List size={10}/> Select from list</> : <><Plus size={10}/> Add New</>}
-                                                </button>
+                                                <button type="button" onClick={toggleCustomArea} className="text-[10px] flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:underline">{isCustomArea ? <><List size={10}/> Select from list</> : <><Plus size={10}/> Add New</>}</button>
                                             </div>
-                                            {isCustomArea ? (
-                                                <input 
-                                                    type="text" 
-                                                    id="area" 
-                                                    value={formData.area} 
-                                                    onChange={handleInputChange} 
-                                                    placeholder="Enter new area name..." 
-                                                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:text-white"
-                                                    autoFocus
-                                                />
-                                            ) : (
-                                                <select id="area" value={formData.area} onChange={handleInputChange} className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm cursor-pointer dark:text-white">
-                                                    {availableAreas.map(a => <option key={a} value={a}>{a}</option>)}
-                                                </select>
-                                            )}
+                                            {isCustomArea ? 
+                                                <input type="text" id="area" value={formData.area} onChange={handleInputChange} placeholder="Enter new area name..." className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:text-white" autoFocus /> : 
+                                                <select id="area" value={formData.area} onChange={handleInputChange} className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm cursor-pointer dark:text-white">{availableAreas.map(a => <option key={a} value={a}>{a}</option>)}</select>
+                                            }
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Type</label>
                                             <select id="type" value={formData.type} onChange={handleInputChange} className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm cursor-pointer dark:text-white">
-                                                <option value="Bachelor">Bachelor / Studio</option>
-                                                <option value="1 Bedroom">1 Bedroom</option>
-                                                <option value="2 Bedroom">2 Bedroom</option>
-                                                <option value="Garden Cottage">Garden Cottage</option>
-                                                <option value="House">House</option>
-                                                <option value="Communal">Communal</option>
+                                                {['Bachelor', '1 Bedroom', '2 Bedroom', 'Garden Cottage', 'House', 'Communal'].map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Rent (R)</label>
-                                            <input type="number" id="rent" value={formData.rent} onChange={handleInputChange} placeholder="0" className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium dark:text-white" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Deposit (R)</label>
-                                            <input type="number" id="deposit" value={formData.deposit} onChange={handleInputChange} placeholder="0" className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium dark:text-white" />
-                                        </div>
+                                        <div><label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Rent (R)</label><input type="number" id="rent" value={formData.rent} onChange={handleInputChange} placeholder="0" className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium dark:text-white" required /></div>
+                                        <div><label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Deposit (R)</label><input type="number" id="deposit" value={formData.deposit} onChange={handleInputChange} placeholder="0" className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium dark:text-white" /></div>
                                     </div>
-                                    
-                                    {/* New Contact Number Field */}
                                     <div>
                                         <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Landlord/Agent Number</label>
                                         <input type="tel" id="contactNumber" value={formData.contactNumber} onChange={handleInputChange} placeholder="e.g. 082 123 4567" className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none text-sm" />
                                     </div>
-
                                     <div>
                                         <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Notes / Amenities</label>
                                         <textarea id="notes" value={formData.notes} onChange={handleInputChange} rows="2" placeholder="e.g. Near HPC Gym, Quiet street..." className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:text-white"></textarea>
@@ -626,13 +502,8 @@
                                             <label htmlFor="closeToUp" className="text-sm text-slate-600 dark:text-gray-300 cursor-pointer select-none">Close to UP? (Walking Distance)</label>
                                         </div>
                                     </div>
-                                    <button 
-                                        type="submit" 
-                                        disabled={isDuplicateFormUrl}
-                                        className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-[0.98] flex justify-center items-center gap-2 ${isDuplicateFormUrl ? 'bg-gray-400 cursor-not-allowed opacity-70' : (editId ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30')}`}
-                                    >
-                                        {editId ? <RefreshCw size={18}/> : <Upload size={18}/>} 
-                                        {isDuplicateFormUrl ? 'Duplicate Link' : (editId ? 'Update Property' : 'Save Property')}
+                                    <button type="submit" disabled={isDuplicateFormUrl} className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-[0.98] flex justify-center items-center gap-2 ${isDuplicateFormUrl ? 'bg-gray-400 cursor-not-allowed opacity-70' : (editId ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30')}`}>
+                                        {editId ? <RefreshCw size={18}/> : <Upload size={18}/>} {isDuplicateFormUrl ? 'Duplicate Link' : (editId ? 'Update Property' : 'Save Property')}
                                     </button>
                                 </form>
                             </div>
@@ -640,132 +511,57 @@
 
                         {/* RIGHT SIDE (LISTINGS) */}
                         <div className="lg:col-span-8 space-y-6">
+                            {error && <div className="p-4 bg-red-100 border border-red-200 text-red-700 rounded-xl flex items-center gap-3"><AlertTriangle size={24} /><div><p className="font-bold">Connection Issue</p><p className="text-sm">{error}</p></div></div>}
                             
-                            {/* ERROR BANNER */}
-                            {error && (
-                                <div className="p-4 bg-red-100 border border-red-200 text-red-700 rounded-xl flex items-center gap-3">
-                                    <AlertTriangle size={24} />
-                                    <div>
-                                        <p className="font-bold">Connection Issue</p>
-                                        <p className="text-sm">{error}</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* MOBILE: COLLAPSIBLE FILTER HEADER */}
                             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 lg:static z-30 transition-all">
-                                {/* Filter Toggle Button (Mobile Only) */}
-                                <div 
-                                    className="p-4 flex items-center justify-between lg:hidden cursor-pointer bg-gray-50 dark:bg-gray-700/50 rounded-t-xl lg:rounded-none"
-                                    onClick={() => setShowFilters(!showFilters)}
-                                >
-                                    <div className="flex items-center gap-2 font-bold text-slate-700 dark:text-white">
-                                        <Filter size={18} /> Filters & Sort
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                                        {processedListings.length} results
-                                        {showFilters ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-                                    </div>
+                                <div className="p-4 flex items-center justify-between lg:hidden cursor-pointer bg-gray-50 dark:bg-gray-700/50 rounded-t-xl lg:rounded-none" onClick={() => setShowFilters(!showFilters)}>
+                                    <div className="flex items-center gap-2 font-bold text-slate-700 dark:text-white"><Filter size={18} /> Filters & Sort</div>
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">{processedListings.length} results {showFilters ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</div>
                                 </div>
-
-                                {/* Filter Controls Container */}
                                 <div className={`p-4 gap-4 flex-col md:flex-row justify-between items-center ${showFilters ? 'flex border-t dark:border-gray-700' : 'hidden lg:flex'}`}>
                                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                                        <div className="relative">
-                                            <select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer">
-                                                <option value="all">All Areas</option>
-                                                {availableAreas.map(a => <option key={a} value={a}>{a}</option>)}
-                                            </select>
-                                            <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
-                                        </div>
-                                        <div className="relative">
-                                            <select value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer">
-                                                <option value="all">All Types</option>
-                                                <option value="Bachelor">Bachelor</option>
-                                                <option value="1 Bedroom">1 Bedroom</option>
-                                                <option value="2 Bedroom">2 Bedroom</option>
-                                                <option value="Garden Cottage">Garden Cottage</option>
-                                                <option value="House">House</option>
-                                                <option value="Communal">Communal</option>
-                                            </select>
-                                            <Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
-                                        </div>
-                                        <div className="relative flex-1">
-                                            <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full cursor-pointer">
-                                                <option value="dateNew">📅 Date Added (Newest)</option>
-                                                <option value="priceAsc">💰 Monthly Cost (Low → High)</option>
-                                                <option value="priceDesc">💰 Monthly Cost (High → Low)</option>
-                                                <option value="moveInAsc">📦 Move-in Cost (Low → High)</option>
-                                            </select>
-                                        </div>
+                                        <div className="relative"><select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer"><option value="all">All Areas</option>{availableAreas.map(a => <option key={a} value={a}>{a}</option>)}</select><Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" /></div>
+                                        <div className="relative"><select value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-40 cursor-pointer"><option value="all">All Types</option>{['Bachelor', '1 Bedroom', '2 Bedroom', 'Garden Cottage', 'House', 'Communal'].map(t => <option key={t} value={t}>{t}</option>)}</select><Filter size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" /></div>
+                                        <div className="relative flex-1"><select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none w-full cursor-pointer"><option value="dateNew">📅 Date Added (Newest)</option><option value="priceAsc">💰 Monthly Cost (Low → High)</option><option value="priceDesc">💰 Monthly Cost (High → Low)</option><option value="moveInAsc">📦 Move-in Cost (Low → High)</option></select></div>
                                     </div>
-                                    <div className="hidden lg:block text-xs font-medium text-slate-400 bg-slate-50 dark:bg-gray-700 px-3 py-1.5 rounded-full border border-slate-100 dark:border-gray-600">
-                                        Showing <span className="font-bold text-slate-700 dark:text-white">{processedListings.length}</span> properties
-                                    </div>
+                                    <div className="hidden lg:block text-xs font-medium text-slate-400 bg-slate-50 dark:bg-gray-700 px-3 py-1.5 rounded-full border border-slate-100 dark:border-gray-600">Showing <span className="font-bold text-slate-700 dark:text-white">{processedListings.length}</span> properties</div>
                                 </div>
                             </div>
 
                             {loading ? (
-                                <div className="flex flex-col items-center justify-center py-20 gap-4">
-                                    <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-                                    <div className="text-slate-400">Connecting to live database...</div>
-                                </div>
+                                <div className="flex flex-col items-center justify-center py-20 gap-4"><div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div><div className="text-slate-400">Connecting to live database...</div></div>
                             ) : processedListings.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
-                                    <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-full mb-4"><Search size={40} className="text-gray-300 dark:text-gray-500" /></div>
-                                    <h3 className="text-lg font-bold text-gray-400 dark:text-gray-500">Database is empty</h3>
-                                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-xs mb-4">You are connected live, but there are no listings yet.</p>
-                                    <button onClick={handleInitializeDB} className="text-indigo-600 font-bold hover:underline">Upload Defaults</button>
+                                    <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-full mb-4"><Search size={40} className="text-gray-300 dark:text-gray-500" /></div><h3 className="text-lg font-bold text-gray-400 dark:text-gray-500">Database is empty</h3>
+                                    <button onClick={handleInitializeDB} className="text-indigo-600 font-bold hover:underline mt-2">Upload Defaults</button>
                                 </div>
                             ) : (
                                 <div className="space-y-4">
                                     {processedListings.map(item => {
                                         const badge = getBadge(item.effectiveRent);
-                                        const isDup = duplicateUrlsInList.has(item.link);
-                                        
+                                        const isDup = duplicateIds.has(item.id);
                                         return (
                                             <div key={item.id} className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-0 overflow-hidden transition-all hover:shadow-md group ${isDup ? 'border-red-300 dark:border-red-800' : 'border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
                                                 <div className="p-5 flex flex-col md:flex-row gap-5 justify-between">
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2 mb-3 flex-wrap">
-                                                            {isDup && (
-                                                                <span className="bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1 animate-pulse">
-                                                                    <AlertTriangle size={10} /> Duplicate
-                                                                </span>
-                                                            )}
+                                                            {isDup && <span className="bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1 animate-pulse"><AlertTriangle size={10} /> Duplicate</span>}
                                                             <span className={`${badge.color} border text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1`}>{badge.icon} {badge.label}</span>
                                                             <span className="bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 border border-slate-200 dark:border-gray-600 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">{item.area}</span>
                                                             <span className="bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 border border-slate-200 dark:border-gray-600 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">{item.type}</span>
                                                             {item.closeToUp && <span className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1">🎓 Near UP</span>}
                                                         </div>
                                                         <div className="flex items-baseline gap-2"><span className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">R {item.effectiveRent?.toLocaleString()}</span><span className="text-xs text-slate-400 dark:text-gray-500 font-medium uppercase tracking-wide">/mo (Effective)</span></div>
-                                                        <div className="mt-3 text-xs text-slate-500 dark:text-gray-400 bg-slate-50 dark:bg-gray-700/50 p-3 rounded-lg border border-slate-100 dark:border-gray-700 grid grid-cols-2 gap-y-1 gap-x-4 max-w-md">
-                                                            <span className="text-slate-400 dark:text-gray-500">Base Rent:</span><span className="font-bold text-slate-700 dark:text-gray-200 text-right">R {item.rent?.toLocaleString()}</span>
-                                                            <span className="text-slate-400 dark:text-gray-500">Electricity:</span><span className="text-right">{item.elecIncluded ? <span className="text-green-600 dark:text-green-400 font-bold">Included</span> : <span className="text-orange-500 font-medium">+ R500 (Est)</span>}</span>
-                                                            <span className="text-slate-400 dark:text-gray-500">WiFi:</span><span className="text-right">{item.wifiIncluded ? <span className="text-green-600 dark:text-green-400 font-bold">Included</span> : <span className="text-indigo-500 dark:text-indigo-400 font-medium">+ R625 (Rain)</span>}</span>
-                                                        </div>
+                                                        <div className="mt-3 text-xs text-slate-500 dark:text-gray-400 bg-slate-50 dark:bg-gray-700/50 p-3 rounded-lg border border-slate-100 dark:border-gray-700 grid grid-cols-2 gap-y-1 gap-x-4 max-w-md"><span className="text-slate-400 dark:text-gray-500">Base Rent:</span><span className="font-bold text-slate-700 dark:text-gray-200 text-right">R {item.rent?.toLocaleString()}</span><span className="text-slate-400 dark:text-gray-500">Electricity:</span><span className="text-right">{item.elecIncluded ? <span className="text-green-600 dark:text-green-400 font-bold">Included</span> : <span className="text-orange-500 font-medium">+ R500 (Est)</span>}</span><span className="text-slate-400 dark:text-gray-500">WiFi:</span><span className="text-right">{item.wifiIncluded ? <span className="text-green-600 dark:text-green-400 font-bold">Included</span> : <span className="text-indigo-500 dark:text-indigo-400 font-medium">+ R625 (Rain)</span>}</span></div>
                                                         {item.notes && <div className="mt-3 text-xs text-slate-500 dark:text-gray-400 italic bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-100 dark:border-yellow-800/30">📝 {item.notes}</div>}
-                                                        
-                                                        {/* ACTION BUTTONS */}
                                                         <div className="mt-4 flex flex-wrap gap-3">
                                                             <a href={item.link} target="_blank" className="bg-slate-800 hover:bg-slate-900 dark:bg-gray-700 dark:hover:bg-gray-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5 shadow-sm">View Listing <ExternalLink size={12}/></a>
                                                             <button onClick={() => handleEdit(item)} className="bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/40 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5">Edit</button>
-                                                            {item.contactNumber && (
-                                                                <button onClick={() => setContactModalData(item)} className="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5 animate-pulse hover:animate-none">
-                                                                    <Phone size={12}/> Contact
-                                                                </button>
-                                                            )}
+                                                            {item.contactNumber && <button onClick={() => setContactModalData(item)} className="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold py-2 px-4 rounded-lg transition inline-flex items-center gap-1.5 animate-pulse hover:animate-none"><Phone size={12}/> Contact</button>}
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-row md:flex-col justify-between items-end border-t md:border-t-0 pt-4 md:pt-0 mt-2 md:mt-0 md:pl-6 md:border-l border-slate-100 dark:border-gray-700 min-w-[140px]">
-                                                        <div className="text-right">
-                                                            <div className="text-[10px] text-slate-400 dark:text-gray-500 uppercase font-bold tracking-wider mb-1">Total Move-in Cost</div>
-                                                            <div className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">R {item.moveInCost?.toLocaleString()}</div>
-                                                            <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-1 flex flex-col items-end gap-0.5">
-                                                                <span>Rent: R{item.rent?.toLocaleString()}</span><span>Dep: R{item.deposit?.toLocaleString()}</span>
-                                                                {item.adminFee ? <span className="text-red-400 font-medium">+ Admin: R1500</span> : <span className="text-green-500 dark:text-green-400">No Admin Fee</span>}
-                                                            </div>
-                                                        </div>
+                                                        <div className="text-right"><div className="text-[10px] text-slate-400 dark:text-gray-500 uppercase font-bold tracking-wider mb-1">Total Move-in Cost</div><div className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">R {item.moveInCost?.toLocaleString()}</div><div className="text-[10px] text-slate-400 dark:text-gray-500 mt-1 flex flex-col items-end gap-0.5"><span>Rent: R{item.rent?.toLocaleString()}</span><span>Dep: R{item.deposit?.toLocaleString()}</span>{item.adminFee ? <span className="text-red-400 font-medium">+ Admin: R1500</span> : <span className="text-green-500 dark:text-green-400">No Admin Fee</span>}</div></div>
                                                         <button onClick={() => handleDelete(item.id)} className="text-slate-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg transition mt-4" title="Delete Property"><Trash2 size={20} /></button>
                                                     </div>
                                                 </div>
@@ -779,7 +575,6 @@
                 </div>
             );
         }
-
         const root = createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
