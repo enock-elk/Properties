@@ -42,7 +42,7 @@
         import { 
             Moon, Sun, Download, Upload, Trash2, ExternalLink, 
             Edit3, RefreshCw, Search, Filter, Check, AlertTriangle, XCircle, Home, Wifi, Cloud,
-            ChevronDown, ChevronUp, Smartphone, Plus, List, Phone, MessageCircle, User
+            ChevronDown, ChevronUp, Smartphone, Plus, List, Phone, MessageCircle, User, Copy
         } from 'https://esm.sh/lucide-react@0.294.0';
         
         // Import Firebase SDKs
@@ -119,11 +119,34 @@
                 return Array.from(combined).sort();
             }, [listings]);
 
+            // --- DUPLICATE DETECTION LOGIC ---
+            
+            // 1. Check if the current form URL exists in the database (excluding current edit item)
+            const isDuplicateFormUrl = useMemo(() => {
+                if (!formData.link || formData.link.trim() === '') return false;
+                return listings.some(l => l.link === formData.link.trim() && l.id !== editId);
+            }, [formData.link, listings, editId]);
+
+            // 2. Identify all URLs in the list that appear more than once (for badges)
+            const duplicateUrlsInList = useMemo(() => {
+                const urlCounts = {};
+                listings.forEach(l => {
+                    if (l.link) {
+                        urlCounts[l.link] = (urlCounts[l.link] || 0) + 1;
+                    }
+                });
+                const duplicates = new Set();
+                Object.keys(urlCounts).forEach(url => {
+                    if (urlCounts[url] > 1) duplicates.add(url);
+                });
+                return duplicates;
+            }, [listings]);
+
             // --- PWA: MANIFEST & SERVICE WORKER & INSTALL ---
             useEffect(() => {
                 const manifest = {
                     // Unique ID added to prevent conflict with other PWAs on same domain
-                    "id": "/rental-manager-app-v2", 
+                    "id": "/rental-manager-app-v3", 
                     "name": "Enock's RentalLive",
                     "short_name": "RentalLive",
                     "start_url": ".",
@@ -145,7 +168,7 @@
                 if ('serviceWorker' in navigator) {
                     const swCode = `
                         // Updated cache name to force refresh
-                        const CACHE_NAME = 'rental-cache-v2';
+                        const CACHE_NAME = 'rental-cache-v3';
                         self.addEventListener('install', (e) => {
                             e.waitUntil(
                                 caches.open(CACHE_NAME).then((cache) => {
@@ -325,8 +348,15 @@
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 
+                // Block submission if duplicate exists
+                if (isDuplicateFormUrl) {
+                    alert("Cannot save: This property URL already exists in the database.");
+                    return;
+                }
+
                 const payload = {
                     ...formData,
+                    link: formData.link.trim(),
                     rent: Number(formData.rent),
                     deposit: Number(formData.deposit),
                     addedAt: editId ? (listings.find(l => l.id === editId)?.addedAt) : new Date().toISOString()
@@ -513,7 +543,15 @@
                                 <form onSubmit={handleSubmit} className="space-y-5">
                                     <div>
                                         <label className="block text-xs font-bold uppercase text-slate-400 dark:text-gray-500 mb-1.5">Listing URL</label>
-                                        <input type="url" id="link" value={formData.link} onChange={handleInputChange} placeholder="Paste link..." className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none text-sm" required />
+                                        <input type="url" id="link" value={formData.link} onChange={handleInputChange} placeholder="Paste link..." className={`w-full p-2.5 bg-gray-50 dark:bg-gray-700 border rounded-lg focus:ring-2 outline-none text-sm dark:text-white transition-colors ${isDuplicateFormUrl ? 'border-red-500 focus:ring-red-200' : 'border-gray-200 dark:border-gray-600 focus:ring-indigo-500'}`} required />
+                                        
+                                        {/* DUPLICATE WARNING */}
+                                        {isDuplicateFormUrl && (
+                                            <div className="flex items-center gap-2 mt-2 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 p-2 rounded-lg text-xs font-bold animate-pulse">
+                                                <AlertTriangle size={14} />
+                                                This property URL is already listed!
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="grid grid-cols-1 gap-4">
                                         <div>
@@ -588,8 +626,13 @@
                                             <label htmlFor="closeToUp" className="text-sm text-slate-600 dark:text-gray-300 cursor-pointer select-none">Close to UP? (Walking Distance)</label>
                                         </div>
                                     </div>
-                                    <button type="submit" className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-[0.98] flex justify-center items-center gap-2 ${editId ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30'}`}>
-                                        {editId ? <RefreshCw size={18}/> : <Upload size={18}/>} {editId ? 'Update Property' : 'Save Property'}
+                                    <button 
+                                        type="submit" 
+                                        disabled={isDuplicateFormUrl}
+                                        className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-[0.98] flex justify-center items-center gap-2 ${isDuplicateFormUrl ? 'bg-gray-400 cursor-not-allowed opacity-70' : (editId ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30')}`}
+                                    >
+                                        {editId ? <RefreshCw size={18}/> : <Upload size={18}/>} 
+                                        {isDuplicateFormUrl ? 'Duplicate Link' : (editId ? 'Update Property' : 'Save Property')}
                                     </button>
                                 </form>
                             </div>
@@ -678,11 +721,18 @@
                                 <div className="space-y-4">
                                     {processedListings.map(item => {
                                         const badge = getBadge(item.effectiveRent);
+                                        const isDup = duplicateUrlsInList.has(item.link);
+                                        
                                         return (
-                                            <div key={item.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-0 overflow-hidden transition-all hover:shadow-md dark:hover:border-gray-600 group">
+                                            <div key={item.id} className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-0 overflow-hidden transition-all hover:shadow-md group ${isDup ? 'border-red-300 dark:border-red-800' : 'border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
                                                 <div className="p-5 flex flex-col md:flex-row gap-5 justify-between">
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                                            {isDup && (
+                                                                <span className="bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1 animate-pulse">
+                                                                    <AlertTriangle size={10} /> Duplicate
+                                                                </span>
+                                                            )}
                                                             <span className={`${badge.color} border text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1`}>{badge.icon} {badge.label}</span>
                                                             <span className="bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 border border-slate-200 dark:border-gray-600 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">{item.area}</span>
                                                             <span className="bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 border border-slate-200 dark:border-gray-600 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">{item.type}</span>
